@@ -114,7 +114,7 @@ searcher::searcher()
     }
 
     for (int n = 0; n <= MAX_TOKEN_LENGTH; ++n) {
-        auto bitmask = std::bitset<VOCAB_SIZE>{};
+        auto bitmask = boost::dynamic_bitset<>(VOCAB_SIZE);
         for (int gt_n = n + 1; gt_n <= MAX_TOKEN_LENGTH; ++gt_n) {
             for (auto tid : nchars_to_tid.at(gt_n)) {
                 bitmask.set(tid);
@@ -133,10 +133,10 @@ searcher::~searcher()
     }
 }
 
-std::size_t searcher::call_tokenize(const uint8_t *bytes,
-                                    size_t bytes_len,
-                                    uint32_t *output_tokens,
-                                    size_t output_tokens_len) const
+auto searcher::call_tokenize(const uint8_t *bytes,
+                             size_t bytes_len,
+                             uint32_t *output_tokens,
+                             size_t output_tokens_len) const -> std::size_t
 {
     auto result = tokenizer->Encode(std::string(bytes, bytes + bytes_len));
     for (int i = 0; i < std::min(result.size(), output_tokens_len); ++i) {
@@ -145,19 +145,114 @@ std::size_t searcher::call_tokenize(const uint8_t *bytes,
     return result.size();
 }
 
-std::vector<int> nonzero_pos(std::uint32_t const *mask, int len)
+static auto to_bitset(std::uint32_t const *mask, int len) -> boost::dynamic_bitset<>
 {
-    std::vector<int> result;
+    auto result = boost::dynamic_bitset<>(VOCAB_SIZE);
     for (int i = 0; i < (len + 31) / 32; ++i) {
         if (mask[i] == 0) {
             continue;
         }
         for (int b = 0; b < 32; ++b) {
             if ((mask[i] >> b) & 0b1) {
-                result.push_back(i * 32 + b);
+                result.set(i * 32 + b);
             }
         }
     }
+    return result;
+}
+
+static auto nonzero_pos(boost::dynamic_bitset<> const &mask) -> std::vector<int>
+{
+    std::vector<int> result;
+    result.reserve(mask.count());
+    int i = mask.find_first();
+    do {
+        result.push_back(i);
+        i = mask.find_next(i);
+    } while (i != mask.npos);
+    return result;
+}
+
+static auto do_intersect(std::optional<std::vector<int>> const &a,
+                         std::optional<std::vector<int>> const &b) -> std::optional<std::vector<int>>
+{
+    if (!a.has_value()) {
+        return b;
+    }
+    if (!b.has_value()) {
+        return a;
+    }
+    std::vector<int> result;
+    std::set_intersection(a->begin(), a->end(), b->begin(), b->end(), std::back_inserter(result));
+    return result;
+}
+
+static auto do_union(std::optional<std::vector<int>> const &a,
+                     std::optional<std::vector<int>> const &b) -> std::optional<std::vector<int>>
+{
+    if (!a.has_value() || !b.has_value()) {
+        return {};
+    }
+    std::vector<int> result;
+    std::set_union(a->begin(), a->end(), b->begin(), b->end(), std::back_inserter(result));
+    return result;
+}
+
+auto searcher::generate_cands(LlgMatcher *matcher,
+                              int pad_size,
+                              std::optional<std::vector<int>> cur_cands,
+                              std::string cur_prefix,
+                              int level) const -> std::optional<std::vector<int>>
+{
+    if (cur_cands.has_value() && cur_cands->empty()) {
+        return std::vector<int>{};
+    }
+
+    if (llg_matcher_compute_mask(matcher)) {
+        throw std::runtime_error("Error computing mask");
+    }
+
+    auto bitmask = to_bitset(llg_matcher_get_mask(matcher), VOCAB_SIZE);
+
+    if (level == 0) {
+        bitmask &= gt_n_char_masks.at(pad_size);
+    }
+
+    auto next_tokens = nonzero_pos(bitmask);
+    // fmt::println("lvl {}: nonzero pos = [{}]", level, fmt::join(next_tokens, ", "));
+    // std::fflush(stdout);
+
+    auto result = std::optional<std::vector<int>>(std::vector<int>{});
+    for (int token : next_tokens) {
+        if (token == EOS_TOKEN_ID) {
+            result = do_union(result, cur_cands);
+            continue;
+        }
+
+        if (llg_matcher_consume_token(matcher, token)) {
+            throw std::runtime_error("llg_matcher_consume_token returned error");
+        }
+
+        auto matches = std::vector<int>{};
+        if (tok_to_sid.count(token) > 0) {
+            for (auto entry : tok_to_sid.at(token)) {
+                matches.push_back(entry.sent_id);
+            }
+            std::sort(matches.begin(), matches.end());
+        }
+
+        auto cands = generate_cands(matcher,
+                                    pad_size,
+                                    do_intersect(cur_cands, matches),
+                                    cur_prefix + tid_to_token.at(token),
+                                    level + 1);
+        result = do_union(result, cands);
+
+        if (llg_matcher_rollback(matcher, 1)) {
+            throw std::runtime_error("llg_matcher_rollback returned error");
+        }
+    }
+
     return result;
 }
 
@@ -171,10 +266,9 @@ void searcher::search(std::string const &search_term) const
         void operator()(LlgMatcher *p) const { llg_free_matcher(p); }
     };
 
-    for (int pad_size = 0; pad_size < 1; ++pad_size) {
+    auto result = std::unordered_set<int>{};
+    for (int pad_size = 0; pad_size < MAX_TOKEN_LENGTH; ++pad_size) {
         auto regex = fmt::format(".{{{}}}{}", pad_size, search_term);
-
-        fmt::println("Regex = {}", regex);
 
         auto m = std::unique_ptr<LlgMatcher, LlgMatcherDeleter>(
             llg_new_matcher(&init, "regex", regex.c_str()));
@@ -182,12 +276,12 @@ void searcher::search(std::string const &search_term) const
             throw std::runtime_error("Error constructing constraint");
         }
 
-        if (llg_matcher_compute_mask(m.get())) {
-            throw std::runtime_error("Error computing mask");
-        }
-
-        auto bitmask = llg_matcher_get_mask(m.get());
-
-        fmt::println("nonzero pos = [{}]", fmt::join(nonzero_pos(bitmask, VOCAB_SIZE), ", "));
+        auto cands = generate_cands(m.get(), pad_size, {}, "", 0);
+        result.insert(cands.value().begin(), cands.value().end());
     }
+
+    fmt::println("Result for '{}' = Array[{}]{{{}}}",
+                 search_term,
+                 result.size(),
+                 fmt::join(result, ", "));
 }

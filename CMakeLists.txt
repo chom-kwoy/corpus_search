@@ -49,6 +49,11 @@ find_package(LLGuidance REQUIRED)
 
 target_link_libraries(corpus_search PUBLIC LLGuidance::LLGuidance)
 
+# boost dynamic_bitset
+find_package(Boost REQUIRED)
+
+target_include_directories(corpus_search PUBLIC ${Boost_INCLUDE_DIRS})
+
 # install
 include(GNUInstallDirs)
 install(TARGETS corpus_search

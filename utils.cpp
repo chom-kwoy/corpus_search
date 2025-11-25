@@ -53,7 +53,8 @@ auto make_index(std::unordered_map<int, std::vector<int>> sentences)
     for (auto const &[sent_id, sentence] : sentences) {
         int pos = 0;
         for (int token : sentence) {
-            index[token].push_back({sent_id, pos});
+            index[token].push_back(
+                {static_cast<unsigned int>(sent_id), static_cast<unsigned int>(pos)});
             pos += 1;
         }
     }
