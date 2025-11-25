@@ -7,8 +7,6 @@
 
 struct IndexEntry;
 
-auto load_file(std::string const &path) -> std::optional<msgpack::object_handle>;
-
 auto tokenize(LlgTokenizer *tokenizer, std::string const &string) -> std::vector<std::uint32_t>;
 
 auto make_index(std::unordered_map<int, std::vector<int>> sentences)

@@ -5,33 +5,7 @@
 #include "utf8.h"
 #include <fmt/core.h>
 #include <fstream>
-
-auto load_file(std::string const &path) -> std::optional<msgpack::object_handle>
-{
-    // Open the file in binary mode, at the end to get the size
-    auto file = std::ifstream(path, std::ios::binary | std::ios::ate);
-
-    if (!file) {
-        fmt::print(stderr, "error opening file.\n");
-        return {};
-    }
-
-    // Get the size of the file
-    std::streamsize size = file.tellg();
-
-    // Seek back to the beginning of the file
-    file.seekg(0, std::ios::beg);
-
-    // Create a vector to hold the file contents
-    std::vector<char> buffer(size);
-
-    if (!file.read(buffer.data(), size)) {
-        fmt::print(stderr, "error opening file.\n");
-        return {};
-    }
-
-    return msgpack::unpack(buffer.data(), buffer.size());
-}
+#include <iostream>
 
 auto tokenize(LlgTokenizer *tokenizer, std::string const &string) -> std::vector<std::uint32_t>
 {

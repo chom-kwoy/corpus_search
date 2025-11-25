@@ -8,19 +8,67 @@
 #include <fstream>
 #include <nlohmann/json.hpp>
 
+static auto load_file(std::string const &path) -> std::unordered_map<int, std::vector<int>>
+{
+    // Open the file in binary mode, at the end to get the size
+    auto file = std::ifstream(path, std::ios::binary);
+
+    if (!file) {
+        fmt::print(stderr, "error opening file.\n");
+        return {};
+    }
+
+    auto unpacker = msgpack::unpacker();
+
+    std::unordered_map<int, std::vector<int>> result;
+
+    int load_count = 0;
+
+    constexpr int try_read_size = 16 * 1024 * 1024;
+    while (file.good()) {
+        unpacker.reserve_buffer(try_read_size);
+
+        auto n_bytes_read = file.readsome(unpacker.buffer(), try_read_size);
+
+        if (n_bytes_read == 0) {
+            file.peek(); // Check if end-of-file is reached
+        }
+
+        if (n_bytes_read > 0) {
+            unpacker.buffer_consumed(n_bytes_read);
+
+            msgpack::object_handle handle;
+            while (unpacker.next(handle)) {
+                if (load_count % 100'000 == 0) {
+                    fmt::println("Loaded {} sentences...", load_count);
+                    std::fflush(stdout);
+                }
+
+                auto map = std::unordered_map<std::string, msgpack::object>(handle.get().convert());
+                int tok_id = int(map.at("id").convert());
+                auto sent_ids = std::vector<int>(map.at("tokens").convert());
+                result[tok_id] = std::move(sent_ids);
+
+                load_count += 1;
+            }
+
+        } else if (file.eof()) {
+            break;
+        } else if (file.fail()) {
+            throw std::runtime_error("Error reading file.");
+        }
+    }
+
+    return result;
+}
+
 searcher::searcher()
 {
     // load index
     fmt::println("Loading sentences...");
     std::fflush(stdout);
 
-    auto data_handle = load_file(
-        "/home/park/PycharmProjects/mk-tokenizer/tokenized_sentences.msgpack");
-    if (!data_handle.has_value()) {
-        throw std::runtime_error("Error loading file");
-    }
-    auto data = data_handle.value().get();
-    data.convert(sentences);
+    sentences = load_file("/home/park/PycharmProjects/mk-tokenizer/tokenized_sentences.msgpack");
 
     std::size_t max_len = 0;
     int max_id = 0;
@@ -124,6 +172,7 @@ searcher::searcher()
     }
 
     fmt::println("Done.");
+    std::fflush(stdout);
 }
 
 searcher::~searcher()
