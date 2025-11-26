@@ -2,10 +2,8 @@
 
 #include "searcher.h"
 
-#include "utf8.h"
 #include <fmt/core.h>
-#include <fstream>
-#include <iostream>
+#include <utf8.h>
 
 auto tokenize(LlgTokenizer *tokenizer, std::string const &string) -> std::vector<std::uint32_t>
 {
@@ -21,18 +19,24 @@ auto tokenize(LlgTokenizer *tokenizer, std::string const &string) -> std::vector
 }
 
 auto make_index(std::unordered_map<int, std::vector<int>> sentences)
-    -> std::unordered_map<int, std::vector<IndexEntry>>
+    -> std::unordered_map<int, idset>
 {
-    auto index = std::unordered_map<int, std::vector<IndexEntry>>{};
+    auto map = std::unordered_map<int, std::vector<index_entry>>{};
     for (auto const &[sent_id, sentence] : sentences) {
         int pos = 0;
         for (int token : sentence) {
-            index[token].push_back(
-                {static_cast<unsigned int>(sent_id), static_cast<unsigned int>(pos)});
+            map[token].push_back({
+                static_cast<unsigned int>(sent_id),
+                static_cast<unsigned int>(pos),
+            });
             pos += 1;
         }
     }
-    return index;
+    auto result = std::unordered_map<int, idset>{};
+    for (auto &&[tok_id, entries] : map) {
+        result[tok_id] = idset::from_vec(std::move(entries));
+    }
+    return result;
 }
 
 auto to_bytes(std::string s) -> std::string

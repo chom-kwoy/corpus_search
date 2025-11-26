@@ -1,30 +1,55 @@
 #ifndef SEARCHER_H
 #define SEARCHER_H
 
-#include <boost/dynamic_bitset.hpp>
-#include <llguidance.h>
 #include <optional>
+#include <set>
 #include <string>
-#include <tokenizers_cpp.h>
 #include <unordered_map>
 #include <vector>
 
-struct IndexEntry
+#include <boost/dynamic_bitset.hpp>
+#include <llguidance.h>
+#include <tokenizers_cpp.h>
+
+struct index_entry
 {
     unsigned int sent_id : 21; // up to 2'097'151
     unsigned int pos : 11;     // up to 2'047
+
+    bool operator<(index_entry const &other) const
+    {
+        return std::tie(sent_id, pos) < std::tie(other.sent_id, other.pos);
+    }
 };
-static_assert(sizeof(IndexEntry) == 4);
+static_assert(sizeof(index_entry) == 4);
 
 // TODO: un-hardcode these
 constexpr int EOS_TOKEN_ID = 1;
 constexpr int VOCAB_SIZE = 65536;
 constexpr int MAX_TOKEN_LENGTH = 8; // in unicode characters
 
+struct idset
+{
+    std::optional<std::vector<index_entry>> data = std::vector<index_entry>{};
+
+    static idset from_vec(std::vector<index_entry> &&vec, bool needs_sort = true);
+
+    static idset all() { return idset{std::optional<std::vector<index_entry>>{}}; }
+    static idset empty() { return idset{}; }
+
+    bool is_all() const { return !data.has_value(); }
+    std::size_t size() const;
+
+    idset followed_by(idset const &other) const;
+    idset operator|(idset const &other) const;
+
+    explicit operator std::set<int>() const;
+};
+
 class searcher
 {
     std::unordered_map<int, std::vector<int>> sentences;
-    std::unordered_map<int, std::vector<IndexEntry>> tok_to_sid;
+    std::unordered_map<int, idset> tok_to_sid;
     LlgTokenizer *ll_tokenizer = nullptr;
     std::unique_ptr<tokenizers::Tokenizer> tokenizer;
     std::unordered_map<int, std::string> tid_to_token;
@@ -37,15 +62,16 @@ class searcher
 
     auto generate_cands(LlgMatcher *matcher,
                         int pad_size,
-                        std::optional<std::vector<int>> cur_cands,
-                        std::string cur_prefix,
-                        int level) const -> std::optional<std::vector<int>>;
+                        std::string const &search_regex,
+                        std::unordered_map<std::string, idset> &cache,
+                        std::string const &prev_prefix = "",
+                        int level = 0) const -> idset;
 
 public:
     searcher();
     ~searcher();
 
-    void search(std::string const &search_term) const;
+    auto search(std::string const &search_term) const -> std::set<int>;
 };
 
 #endif // SEARCHER_H

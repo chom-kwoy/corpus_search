@@ -2,11 +2,105 @@
 
 #include "utils.h"
 
-#include "utf8.h"
 #include <fmt/core.h>
 #include <fmt/ranges.h>
 #include <fstream>
 #include <nlohmann/json.hpp>
+#include <re2/re2.h>
+#include <utf8.h>
+
+idset idset::from_vec(std::vector<index_entry> &&vec, bool needs_sort)
+{
+    auto output = idset::empty();
+    if (needs_sort) {
+        std::sort(vec.begin(), vec.end());
+    }
+    output.data.emplace(std::move(vec));
+    return output;
+}
+
+std::size_t idset::size() const
+{
+    if (is_all()) {
+        throw std::runtime_error("size() called on universal set");
+    }
+    return data->size();
+}
+
+idset idset::followed_by(idset const &other) const
+{
+    if (other.is_all()) {
+        return *this;
+    }
+
+    if (is_all()) {
+        std::vector<index_entry> vec;
+        for (index_entry const &entry : other.data.value()) {
+            if (entry.pos - 1 >= 0) {
+                vec.push_back({
+                    entry.sent_id,
+                    static_cast<unsigned int>(entry.pos - 1),
+                });
+            }
+        }
+        return idset::from_vec(std::move(vec));
+    }
+
+    auto const &arr1 = data.value();
+    auto const &arr2 = other.data.value();
+
+    std::vector<index_entry> vec;
+
+    int idx1 = 0, idx2 = 0;
+    while (idx1 < arr1.size() && idx2 < arr2.size()) {
+        if (arr1[idx1].sent_id < arr2[idx2].sent_id) {
+            ++idx1;
+        } else {
+            if (arr1[idx1].sent_id == arr2[idx2].sent_id) {
+                if (arr1[idx1].pos + 1 < arr2[idx2].pos) {
+                    ++idx1;
+                } else if (arr1[idx1].pos + 1 == arr2[idx2].pos) {
+                    vec.push_back(arr1[idx1]);
+                    ++idx1;
+                    ++idx2;
+                } else {
+                    ++idx2;
+                }
+            } else {
+                ++idx2;
+            }
+        }
+    }
+
+    return idset::from_vec(std::move(vec), false);
+}
+
+idset idset::operator|(idset const &other) const
+{
+    if (is_all() || other.is_all()) {
+        return idset::all();
+    }
+
+    auto const &arr1 = data.value();
+    auto const &arr2 = other.data.value();
+
+    std::vector<index_entry> vec;
+    std::set_union(arr1.begin(), arr1.end(), arr2.begin(), arr2.end(), std::back_inserter(vec));
+
+    return idset::from_vec(std::move(vec), false);
+}
+
+idset::operator std::set<int>() const
+{
+    if (is_all()) {
+        throw std::runtime_error("cannot convert universal set");
+    }
+    std::set<int> output;
+    for (auto entry : data.value()) {
+        output.insert(entry.sent_id);
+    }
+    return output;
+}
 
 static auto load_file(std::string const &path) -> std::unordered_map<int, std::vector<int>>
 {
@@ -47,6 +141,7 @@ static auto load_file(std::string const &path) -> std::unordered_map<int, std::v
                 auto map = std::unordered_map<std::string, msgpack::object>(handle.get().convert());
                 int tok_id = int(map.at("id").convert());
                 auto sent_ids = std::vector<int>(map.at("tokens").convert());
+                sent_ids.shrink_to_fit();
                 result[tok_id] = std::move(sent_ids);
 
                 load_count += 1;
@@ -91,7 +186,7 @@ searcher::searcher()
 
     int bytes = 0;
     for (auto const &[tok, entries] : tok_to_sid) {
-        bytes += sizeof(tok) + entries.size() * sizeof(IndexEntry);
+        bytes += sizeof(tok) + entries.size() * sizeof(index_entry);
     }
 
     fmt::println("Made index. Index size = {} MB", bytes / 1'000'000);
@@ -110,7 +205,7 @@ searcher::searcher()
 
     tokenizer = tokenizers::Tokenizer::FromBlobJSON(tokenizer_json);
 
-    const char sample_input[] = "ngixta 國家";
+    const char sample_input[] = "kaxnanxho ngixta 國家";
     fmt::println("Loaded hf tokenizer. \"{}\" -> [{}]",
                  sample_input,
                  fmt::join(tokenizer->Encode(sample_input), ", "));
@@ -213,7 +308,11 @@ static auto to_bitset(std::uint32_t const *mask, int len) -> boost::dynamic_bits
 static auto nonzero_pos(boost::dynamic_bitset<> const &mask) -> std::vector<int>
 {
     std::vector<int> result;
-    result.reserve(mask.count());
+    int cnt = mask.count();
+    if (cnt == 0) {
+        return result;
+    }
+    result.reserve(cnt);
     int i = mask.find_first();
     do {
         result.push_back(i);
@@ -249,14 +348,11 @@ static auto do_union(std::optional<std::vector<int>> const &a,
 
 auto searcher::generate_cands(LlgMatcher *matcher,
                               int pad_size,
-                              std::optional<std::vector<int>> cur_cands,
-                              std::string cur_prefix,
-                              int level) const -> std::optional<std::vector<int>>
+                              std::string const &search_regex,
+                              std::unordered_map<std::string, idset> &cache,
+                              std::string const &prev_prefix,
+                              int level) const -> idset
 {
-    if (cur_cands.has_value() && cur_cands->empty()) {
-        return std::vector<int>{};
-    }
-
     if (llg_matcher_compute_mask(matcher)) {
         throw std::runtime_error("Error computing mask");
     }
@@ -268,44 +364,62 @@ auto searcher::generate_cands(LlgMatcher *matcher,
     }
 
     auto next_tokens = nonzero_pos(bitmask);
-    // fmt::println("lvl {}: nonzero pos = [{}]", level, fmt::join(next_tokens, ", "));
-    // std::fflush(stdout);
+    fmt::println("lvl {}: {}", level, prev_prefix);
+    std::fflush(stdout);
 
-    auto result = std::optional<std::vector<int>>(std::vector<int>{});
+    auto result = idset::empty();
     for (int token : next_tokens) {
         if (token == EOS_TOKEN_ID) {
-            result = do_union(result, cur_cands);
+            result = {};
             continue;
         }
 
-        if (llg_matcher_consume_token(matcher, token)) {
-            throw std::runtime_error("llg_matcher_consume_token returned error");
-        }
-
-        auto matches = std::vector<int>{};
-        if (tok_to_sid.count(token) > 0) {
-            for (auto entry : tok_to_sid.at(token)) {
-                matches.push_back(entry.sent_id);
+        auto cur_prefix = prev_prefix + tid_to_token.at(token);
+        if (level == 0) {
+            auto it = cur_prefix.begin();
+            for (int i = 0; i < pad_size; ++i) {
+                utf8::next(it, cur_prefix.end());
             }
-            std::sort(matches.begin(), matches.end());
+            cur_prefix = cur_prefix.substr(it - cur_prefix.begin());
         }
 
-        auto cands = generate_cands(matcher,
-                                    pad_size,
-                                    do_intersect(cur_cands, matches),
-                                    cur_prefix + tid_to_token.at(token),
-                                    level + 1);
-        result = do_union(result, cands);
-
-        if (llg_matcher_rollback(matcher, 1)) {
-            throw std::runtime_error("llg_matcher_rollback returned error");
+        auto matches = idset::empty();
+        if (tok_to_sid.count(token) > 0) {
+            matches = tok_to_sid.at(token);
         }
+
+        idset cands = idset::all();
+        if (cache.count(cur_prefix) > 0) {
+            cands = cache.at(cur_prefix);
+        } else {
+            auto cur_prefix_view = absl::string_view(cur_prefix);
+            if (RE2::Consume(&cur_prefix_view, search_regex)) {
+                result = result | matches;
+                continue;
+            }
+
+            if (llg_matcher_consume_token(matcher, token)) {
+                throw std::runtime_error("llg_matcher_consume_token returned error");
+            }
+
+            cands = generate_cands(matcher, pad_size, search_regex, cache, cur_prefix, level + 1);
+
+            if (llg_matcher_rollback(matcher, 1)) {
+                throw std::runtime_error("llg_matcher_rollback returned error");
+            }
+        }
+
+        result = result | matches.followed_by(cands);
+    }
+
+    if (level > 0) {
+        cache[prev_prefix] = result;
     }
 
     return result;
 }
 
-void searcher::search(std::string const &search_term) const
+auto searcher::search(std::string const &search_term) const -> std::set<int>
 {
     LlgConstraintInit init;
     llg_constraint_init_set_defaults(&init, ll_tokenizer);
@@ -315,9 +429,16 @@ void searcher::search(std::string const &search_term) const
         void operator()(LlgMatcher *p) const { llg_free_matcher(p); }
     };
 
-    auto result = std::unordered_set<int>{};
+    auto search_regex = RE2::QuoteMeta(search_term);
+
+    auto result = idset::empty();
+
+    std::unordered_map<std::string, idset> cache;
     for (int pad_size = 0; pad_size < MAX_TOKEN_LENGTH; ++pad_size) {
-        auto regex = fmt::format(".{{{}}}{}", pad_size, search_term);
+        fmt::println("======= pad size = {} ========", pad_size);
+
+        auto regex = fmt::format(".{{{}}}{}.*", pad_size, search_regex);
+        fmt::println("Regex = {}", regex);
 
         auto m = std::unique_ptr<LlgMatcher, LlgMatcherDeleter>(
             llg_new_matcher(&init, "regex", regex.c_str()));
@@ -325,12 +446,9 @@ void searcher::search(std::string const &search_term) const
             throw std::runtime_error("Error constructing constraint");
         }
 
-        auto cands = generate_cands(m.get(), pad_size, {}, "", 0);
-        result.insert(cands.value().begin(), cands.value().end());
+        auto cands = generate_cands(m.get(), pad_size, search_regex, cache);
+        result = result | cands;
     }
 
-    fmt::println("Result for '{}' = Array[{}]{{{}}}",
-                 search_term,
-                 result.size(),
-                 fmt::join(result, ", "));
+    return std::set<int>(result);
 }
