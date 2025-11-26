@@ -7,7 +7,7 @@
 #include <msgpack.hpp>
 
 struct index_entry;
-struct idset;
+struct candset;
 
 auto tokenize(LlgTokenizer *tokenizer, std::string const &string) -> std::vector<std::uint32_t>;
 

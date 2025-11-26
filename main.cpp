@@ -27,7 +27,8 @@ void measure_time(searcher const &s, std::string search_term)
 
 int main()
 {
-    auto s = searcher();
+    auto s = searcher("/home/park/PycharmProjects/mk-tokenizer/tokenized_sentences.msgpack",
+                      "/home/park/PycharmProjects/mk-tokenizer/bpe_tokenizer/tokenizer.json");
 
     // fmt::print("Press enter to continue");
     // std::getchar();

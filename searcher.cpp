@@ -11,24 +11,33 @@
 #include <re2/re2.h>
 #include <utf8.h>
 
-idset idset::from_set(std::set<index_entry> &&set)
+candset candset::from_set(roaring::Roaring &&set)
 {
-    auto output = idset::empty();
+    auto output = candset::empty();
     output.data = std::move(set);
     return output;
 }
 
-std::size_t idset::size() const
+candset candset::from_vec(std::vector<index_entry> const &vec)
+{
+    auto output = candset::empty();
+    for (auto entry : vec) {
+        output.data->add(entry.hash());
+    }
+    return output;
+}
+
+std::size_t candset::size() const
 {
     if (is_all()) {
         throw std::runtime_error("size() called on universal set");
     }
-    return data->size();
+    return data->cardinality();
 }
 
 std::chrono::duration<float> idset_intersect_time = {};
 
-idset idset::followed_by(idset const &other) const
+candset candset::followed_by(candset const &other) const
 {
     measure_time timer(idset_intersect_time);
 
@@ -37,51 +46,55 @@ idset idset::followed_by(idset const &other) const
     }
 
     if (is_all()) {
-        std::set<index_entry> set;
-        for (index_entry const &entry : other.data.value()) {
+        roaring::Roaring result;
+        for (unsigned int hash : other.data.value()) {
+            auto entry = index_entry::from_hash(hash);
             if (entry.pos - 1 >= 0) {
-                set.insert({
+                auto new_entry = index_entry{
                     entry.sent_id,
                     static_cast<unsigned int>(entry.pos - 1),
-                });
+                };
+                result.add(new_entry.hash());
             }
         }
-        return idset::from_set(std::move(set));
+        return candset::from_set(std::move(result));
     }
 
     auto const &arr1 = data.value();
     auto const &arr2 = other.data.value();
 
-    std::set<index_entry> set;
+    roaring::Roaring result;
 
-    auto idx1 = arr1.begin();
-    auto idx2 = arr2.begin();
-    while (idx1 != arr1.end() && idx2 != arr2.end()) {
-        if (idx1->sent_id < idx2->sent_id) {
-            ++idx1;
+    auto it1 = arr1.begin(), it2 = arr2.begin();
+    while (it1 != arr1.end() && it2 != arr2.end()) {
+        auto entry1 = index_entry::from_hash(*it1);
+        auto entry2 = index_entry::from_hash(*it2);
+        if (entry1.sent_id < entry2.sent_id) {
+            ++it1;
         } else {
-            if (idx1->sent_id == idx2->sent_id) {
-                if (idx1->pos + 1 < idx2->pos) {
-                    ++idx1;
-                } else if (idx1->pos + 1 == idx2->pos) {
-                    set.insert(*idx1);
-                    ++idx1;
-                    ++idx2;
+            if (entry1.sent_id == entry2.sent_id) {
+                if (entry1.pos + 1 < entry2.pos) {
+                    ++it1;
+                } else if (entry1.pos + 1 == entry2.pos) {
+                    result.add(*it1);
+                    ++it1;
+                    ++it2;
                 } else {
-                    ++idx2;
+                    ++it2;
                 }
             } else {
-                ++idx2;
+                ++it2;
             }
         }
     }
 
-    return idset::from_set(std::move(set));
+    return candset::from_set(std::move(result));
 }
 
 std::chrono::duration<float> idset_union_time = {};
+int num_total_items_added = 0;
 
-idset &idset::operator|=(idset const &other)
+candset &candset::operator|=(candset const &other)
 {
     measure_time timer(idset_union_time);
 
@@ -93,12 +106,12 @@ idset &idset::operator|=(idset const &other)
     auto &arr1 = data.value();
     auto const &arr2 = other.data.value();
 
-    arr1.insert(arr2.begin(), arr2.end());
+    arr1 |= arr2;
 
     return *this;
 }
 
-idset &idset::operator|=(idset &&other)
+candset &candset::operator|=(candset &&other)
 {
     measure_time timer(idset_union_time);
 
@@ -110,23 +123,41 @@ idset &idset::operator|=(idset &&other)
     auto &arr1 = data.value();
     auto &arr2 = other.data.value();
 
-    if (arr2.size() > arr1.size()) {
+    if (arr2.cardinality() > arr1.cardinality()) {
         std::swap(arr1, arr2);
     }
 
-    arr1.insert(arr2.begin(), arr2.end());
+    arr1 |= arr2;
 
     return *this;
 }
 
-idset::operator std::set<int>() const
+candset &candset::operator|=(std::vector<index_entry> const &other)
+{
+    measure_time timer(idset_union_time);
+
+    if (is_all()) {
+        data.reset();
+        return *this;
+    }
+
+    auto &arr1 = data.value();
+
+    for (auto entry : other) {
+        arr1.add(entry.hash());
+    }
+
+    return *this;
+}
+
+candset::operator std::set<int>() const
 {
     if (is_all()) {
         throw std::runtime_error("cannot convert universal set");
     }
     std::set<int> output;
-    for (auto entry : data.value()) {
-        output.insert(entry.sent_id);
+    for (auto hash : data.value()) {
+        output.insert(index_entry::from_hash(hash).sent_id);
     }
     return output;
 }
@@ -186,13 +217,14 @@ static auto load_file(std::string const &path) -> std::unordered_map<int, std::v
     return result;
 }
 
-searcher::searcher()
+searcher::searcher(std::string const &tokenized_sentences_path,
+                   std::string const &tokenizer_json_path)
 {
     // load index
     fmt::println("Loading sentences...");
     std::fflush(stdout);
 
-    sentences = load_file("/home/park/PycharmProjects/mk-tokenizer/tokenized_sentences.msgpack");
+    sentences = load_file(tokenized_sentences_path);
 
     std::size_t max_len = 0;
     int max_id = 0;
@@ -206,6 +238,15 @@ searcher::searcher()
                  max_len,
                  max_id);
     std::fflush(stdout);
+
+    if (max_len > MAX_POS + 1) {
+        std::runtime_error(
+            fmt::format("Sentence too long: max_len = {} > {}", max_len, MAX_POS + 1));
+    }
+    if (max_id > MAX_SENTID) {
+        std::runtime_error(
+            fmt::format("Too many sentences: max_sent_id = {} > {}", max_id, MAX_SENTID));
+    }
 
     // make index
     fmt::println("Making index...");
@@ -225,8 +266,7 @@ searcher::searcher()
     fmt::println("Loading tokenizer...");
     std::fflush(stdout);
 
-    auto file = std::ifstream(
-        "/home/park/PycharmProjects/mk-tokenizer/bpe_tokenizer/tokenizer.json");
+    auto file = std::ifstream(tokenizer_json_path);
     if (!file.is_open()) {
         throw std::runtime_error("Error opening tokenizer file");
     }
@@ -357,9 +397,9 @@ static auto nonzero_pos(boost::dynamic_bitset<> const &mask) -> std::vector<int>
 auto searcher::generate_cands(LlgMatcher *matcher,
                               int pad_size,
                               std::string const &search_regex,
-                              std::unordered_map<std::string, idset> &cache,
+                              std::unordered_map<std::string, candset> &cache,
                               std::string const &prev_prefix,
-                              int level) const -> idset
+                              int level) const -> candset
 {
     if (llg_matcher_compute_mask(matcher)) {
         throw std::runtime_error("Error computing mask");
@@ -372,9 +412,9 @@ auto searcher::generate_cands(LlgMatcher *matcher,
     }
 
     auto next_tokens = nonzero_pos(bitmask);
-    fmt::println("lvl {}: {}", level, prev_prefix);
+    fmt::println("lvl {}: '{}' (+ {} tokens)", level, prev_prefix, next_tokens.size());
 
-    auto result = idset::empty();
+    auto result = candset::empty();
     for (int token : next_tokens) {
         if (token == EOS_TOKEN_ID) {
             result = {};
@@ -390,13 +430,12 @@ auto searcher::generate_cands(LlgMatcher *matcher,
             cur_prefix = cur_prefix.substr(it - cur_prefix.begin());
         }
 
-        auto matches = idset::empty();
+        auto matches = std::vector<index_entry>{};
         if (tok_to_sid.count(token) > 0) {
-            auto const &vec = tok_to_sid.at(token);
-            matches = idset::from_set(std::set<index_entry>(vec.begin(), vec.end()));
+            matches = tok_to_sid.at(token); // TODO: eliminate copy
         }
 
-        idset cands = idset::all();
+        candset cands = candset::all();
         if (cache.count(cur_prefix) > 0) {
             cands = cache.at(cur_prefix);
         } else {
@@ -417,7 +456,8 @@ auto searcher::generate_cands(LlgMatcher *matcher,
             }
         }
 
-        result = result |= matches.followed_by(cands);
+        auto match_set = candset::from_vec(matches);
+        result |= match_set.followed_by(cands);
     }
 
     if (level > 0) {
@@ -439,9 +479,9 @@ auto searcher::search(std::string const &search_term) const -> std::set<int>
 
     auto search_regex = RE2::QuoteMeta(search_term);
 
-    auto result = idset::empty();
+    auto result = candset::empty();
 
-    std::unordered_map<std::string, idset> cache;
+    std::unordered_map<std::string, candset> cache;
     for (int pad_size = 0; pad_size < MAX_TOKEN_LENGTH; ++pad_size) {
         fmt::println("======= pad size = {} ========", pad_size);
 
