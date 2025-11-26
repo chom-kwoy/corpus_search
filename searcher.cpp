@@ -438,7 +438,7 @@ auto searcher::generate_cands(LlgMatcher *matcher,
             continue;
         }
 
-        auto matches = tok_to_sid.at(token);
+        auto const &matches = tok_to_sid.at(token);
 
         if (cache.count(cur_prefix) > 0) {
             auto const &cands = cache.at(cur_prefix);
@@ -450,7 +450,7 @@ auto searcher::generate_cands(LlgMatcher *matcher,
 
         auto cur_prefix_view = absl::string_view(cur_prefix);
         if (RE2::Consume(&cur_prefix_view, search_regex)) {
-            result |= std::move(matches);
+            result |= matches;
             continue;
         }
 
