@@ -34,7 +34,7 @@ int main()
     // std::getchar();
 
     measure_time(s, "z");
-    measure_time(s, "a");
+    measure_time(s, "o");
     measure_time(s, "ho");
     measure_time(s, "sixtaxsoxngixta");
     measure_time(s, "ngixta");

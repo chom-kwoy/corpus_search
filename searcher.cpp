@@ -400,7 +400,7 @@ static auto nonzero_pos(boost::dynamic_bitset<> const &mask) -> std::vector<int>
 
 auto searcher::generate_cands(LlgMatcher *matcher,
                               int pad_size,
-                              std::string const &search_regex,
+                              RE2 const &search_regex,
                               std::unordered_map<std::string, candset> &cache,
                               std::string const &prev_prefix,
                               int level) const -> candset
@@ -503,7 +503,7 @@ auto searcher::search(std::string const &search_term) const -> std::vector<int>
             throw std::runtime_error("Error constructing constraint");
         }
 
-        result |= generate_cands(m.get(), pad_size, search_regex, cache);
+        result |= generate_cands(m.get(), pad_size, RE2(search_regex), cache);
     }
 
     auto sent_ids = std::vector<int>{};

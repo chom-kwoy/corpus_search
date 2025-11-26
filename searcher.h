@@ -9,6 +9,7 @@
 
 #include <boost/dynamic_bitset.hpp>
 #include <llguidance.h>
+#include <re2/re2.h>
 #include <roaring.hh>
 #include <tokenizers_cpp.h>
 
@@ -79,7 +80,7 @@ class searcher
 
     auto generate_cands(LlgMatcher *matcher,
                         int pad_size,
-                        std::string const &search_regex,
+                        RE2 const &search_regex,
                         std::unordered_map<std::string, candset> &cache,
                         std::string const &prev_prefix = "",
                         int level = 0) const -> candset;
