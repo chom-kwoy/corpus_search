@@ -434,30 +434,34 @@ auto searcher::generate_cands(LlgMatcher *matcher,
             cur_prefix = cur_prefix.substr(it - cur_prefix.begin());
         }
 
-        auto matches = std::vector<index_entry>{};
-        if (tok_to_sid.count(token) > 0) {
-            matches = tok_to_sid.at(token); // TODO: eliminate copy
+        if (tok_to_sid.count(token) == 0) {
+            continue;
         }
 
-        candset cands = candset::all();
+        auto matches = tok_to_sid.at(token);
+
         if (cache.count(cur_prefix) > 0) {
-            cands = cache.at(cur_prefix);
-        } else {
-            auto cur_prefix_view = absl::string_view(cur_prefix);
-            if (RE2::Consume(&cur_prefix_view, search_regex)) {
-                result |= std::move(matches);
-                continue;
-            }
+            auto const &cands = cache.at(cur_prefix);
 
-            if (llg_matcher_consume_token(matcher, token)) {
-                throw std::runtime_error("llg_matcher_consume_token returned error");
-            }
+            auto match_set = candset::from_vec(matches);
+            result |= match_set.followed_by(cands);
+            continue;
+        }
 
-            cands = generate_cands(matcher, pad_size, search_regex, cache, cur_prefix, level + 1);
+        auto cur_prefix_view = absl::string_view(cur_prefix);
+        if (RE2::Consume(&cur_prefix_view, search_regex)) {
+            result |= std::move(matches);
+            continue;
+        }
 
-            if (llg_matcher_rollback(matcher, 1)) {
-                throw std::runtime_error("llg_matcher_rollback returned error");
-            }
+        if (llg_matcher_consume_token(matcher, token)) {
+            throw std::runtime_error("llg_matcher_consume_token returned error");
+        }
+
+        auto cands = generate_cands(matcher, pad_size, search_regex, cache, cur_prefix, level + 1);
+
+        if (llg_matcher_rollback(matcher, 1)) {
+            throw std::runtime_error("llg_matcher_rollback returned error");
         }
 
         auto match_set = candset::from_vec(matches);

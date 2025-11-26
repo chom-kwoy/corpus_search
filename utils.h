@@ -5,6 +5,7 @@
 
 #include <llguidance.h>
 #include <msgpack.hpp>
+#include <roaring.hh>
 
 struct index_entry;
 struct candset;
