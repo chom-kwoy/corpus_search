@@ -13,8 +13,7 @@ TEST(CorpusSearchTest, IdSetFollowedBy)
     ASSERT_TRUE(!c.is_all());
     ASSERT_EQ(c.size(), 3);
 
-    auto r = std::set<int>(c);
-    auto v = std::vector<int>(r.begin(), r.end());
+    auto v = c.sent_ids();
 
     ASSERT_EQ(v[0], 2);
     ASSERT_EQ(v[1], 5);

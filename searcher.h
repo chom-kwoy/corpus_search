@@ -60,7 +60,7 @@ struct candset
     candset &operator|=(candset &&other);
     candset &operator|=(std::vector<index_entry> const &other);
 
-    explicit operator std::set<int>() const;
+    std::vector<int> sent_ids() const;
 };
 
 class searcher
@@ -88,7 +88,7 @@ public:
     searcher(std::string const &tokenized_sentences_path, std::string const &tokenizer_json_path);
     ~searcher();
 
-    auto search(std::string const &search_term) const -> std::set<int>;
+    auto search(std::string const &search_term) const -> std::vector<int>;
 };
 
 #endif // SEARCHER_H

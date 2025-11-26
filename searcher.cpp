@@ -92,7 +92,6 @@ candset candset::followed_by(candset const &other) const
 }
 
 std::chrono::duration<float> idset_union_time = {};
-int num_total_items_added = 0;
 
 candset &candset::operator|=(candset const &other)
 {
@@ -150,14 +149,19 @@ candset &candset::operator|=(std::vector<index_entry> const &other)
     return *this;
 }
 
-candset::operator std::set<int>() const
+std::vector<int> candset::sent_ids() const
 {
     if (is_all()) {
         throw std::runtime_error("cannot convert universal set");
     }
-    std::set<int> output;
+    std::vector<int> output;
+    int last_sent_id = -1;
     for (auto hash : data.value()) {
-        output.insert(index_entry::from_hash(hash).sent_id);
+        auto entry = index_entry::from_hash(hash);
+        if (entry.sent_id != last_sent_id) {
+            output.push_back(entry.sent_id);
+        }
+        last_sent_id = entry.sent_id;
     }
     return output;
 }
@@ -467,7 +471,7 @@ auto searcher::generate_cands(LlgMatcher *matcher,
     return result;
 }
 
-auto searcher::search(std::string const &search_term) const -> std::set<int>
+auto searcher::search(std::string const &search_term) const -> std::vector<int>
 {
     LlgConstraintInit init;
     llg_constraint_init_set_defaults(&init, ll_tokenizer);
@@ -498,9 +502,19 @@ auto searcher::search(std::string const &search_term) const -> std::set<int>
         result |= generate_cands(m.get(), pad_size, search_regex, cache);
     }
 
+    auto sent_ids = std::vector<int>{};
+
+    std::chrono::duration<float> sent_ids_conv_time = {};
+    {
+        measure_time timer(sent_ids_conv_time);
+
+        sent_ids = result.sent_ids();
+    }
+
     fmt::println("idset_intersect_time = {}", idset_intersect_time);
     fmt::println("idset_union_time = {}", idset_union_time);
     fmt::println("nonzero_pos_time = {}", nonzero_pos_time);
+    fmt::println("sent_ids_conv_time = {}", sent_ids_conv_time);
 
-    return std::set<int>(result);
+    return sent_ids;
 }
