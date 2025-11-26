@@ -2,6 +2,8 @@
 
 #include "utils.h"
 
+#include <chrono>
+#include <fmt/chrono.h>
 #include <fmt/core.h>
 #include <fmt/ranges.h>
 #include <fstream>
@@ -9,13 +11,10 @@
 #include <re2/re2.h>
 #include <utf8.h>
 
-idset idset::from_vec(std::vector<index_entry> &&vec, bool needs_sort)
+idset idset::from_set(std::set<index_entry> &&set)
 {
     auto output = idset::empty();
-    if (needs_sort) {
-        std::sort(vec.begin(), vec.end());
-    }
-    output.data.emplace(std::move(vec));
+    output.data = std::move(set);
     return output;
 }
 
@@ -27,40 +26,45 @@ std::size_t idset::size() const
     return data->size();
 }
 
+std::chrono::duration<float> idset_intersect_time = {};
+
 idset idset::followed_by(idset const &other) const
 {
+    measure_time timer(idset_intersect_time);
+
     if (other.is_all()) {
         return *this;
     }
 
     if (is_all()) {
-        std::vector<index_entry> vec;
+        std::set<index_entry> set;
         for (index_entry const &entry : other.data.value()) {
             if (entry.pos - 1 >= 0) {
-                vec.push_back({
+                set.insert({
                     entry.sent_id,
                     static_cast<unsigned int>(entry.pos - 1),
                 });
             }
         }
-        return idset::from_vec(std::move(vec));
+        return idset::from_set(std::move(set));
     }
 
     auto const &arr1 = data.value();
     auto const &arr2 = other.data.value();
 
-    std::vector<index_entry> vec;
+    std::set<index_entry> set;
 
-    int idx1 = 0, idx2 = 0;
-    while (idx1 < arr1.size() && idx2 < arr2.size()) {
-        if (arr1[idx1].sent_id < arr2[idx2].sent_id) {
+    auto idx1 = arr1.begin();
+    auto idx2 = arr2.begin();
+    while (idx1 != arr1.end() && idx2 != arr2.end()) {
+        if (idx1->sent_id < idx2->sent_id) {
             ++idx1;
         } else {
-            if (arr1[idx1].sent_id == arr2[idx2].sent_id) {
-                if (arr1[idx1].pos + 1 < arr2[idx2].pos) {
+            if (idx1->sent_id == idx2->sent_id) {
+                if (idx1->pos + 1 < idx2->pos) {
                     ++idx1;
-                } else if (arr1[idx1].pos + 1 == arr2[idx2].pos) {
-                    vec.push_back(arr1[idx1]);
+                } else if (idx1->pos + 1 == idx2->pos) {
+                    set.insert(*idx1);
                     ++idx1;
                     ++idx2;
                 } else {
@@ -72,22 +76,47 @@ idset idset::followed_by(idset const &other) const
         }
     }
 
-    return idset::from_vec(std::move(vec), false);
+    return idset::from_set(std::move(set));
 }
 
-idset idset::operator|(idset const &other) const
+std::chrono::duration<float> idset_union_time = {};
+
+idset &idset::operator|=(idset const &other)
 {
+    measure_time timer(idset_union_time);
+
     if (is_all() || other.is_all()) {
-        return idset::all();
+        data.reset();
+        return *this;
     }
 
-    auto const &arr1 = data.value();
+    auto &arr1 = data.value();
     auto const &arr2 = other.data.value();
 
-    std::vector<index_entry> vec;
-    std::set_union(arr1.begin(), arr1.end(), arr2.begin(), arr2.end(), std::back_inserter(vec));
+    arr1.insert(arr2.begin(), arr2.end());
 
-    return idset::from_vec(std::move(vec), false);
+    return *this;
+}
+
+idset &idset::operator|=(idset &&other)
+{
+    measure_time timer(idset_union_time);
+
+    if (is_all() || other.is_all()) {
+        data.reset();
+        return *this;
+    }
+
+    auto &arr1 = data.value();
+    auto &arr2 = other.data.value();
+
+    if (arr2.size() > arr1.size()) {
+        std::swap(arr1, arr2);
+    }
+
+    arr1.insert(arr2.begin(), arr2.end());
+
+    return *this;
 }
 
 idset::operator std::set<int>() const
@@ -305,8 +334,12 @@ static auto to_bitset(std::uint32_t const *mask, int len) -> boost::dynamic_bits
     return result;
 }
 
+std::chrono::duration<float> nonzero_pos_time = {};
+
 static auto nonzero_pos(boost::dynamic_bitset<> const &mask) -> std::vector<int>
 {
+    measure_time timer(nonzero_pos_time);
+
     std::vector<int> result;
     int cnt = mask.count();
     if (cnt == 0) {
@@ -318,31 +351,6 @@ static auto nonzero_pos(boost::dynamic_bitset<> const &mask) -> std::vector<int>
         result.push_back(i);
         i = mask.find_next(i);
     } while (i != mask.npos);
-    return result;
-}
-
-static auto do_intersect(std::optional<std::vector<int>> const &a,
-                         std::optional<std::vector<int>> const &b) -> std::optional<std::vector<int>>
-{
-    if (!a.has_value()) {
-        return b;
-    }
-    if (!b.has_value()) {
-        return a;
-    }
-    std::vector<int> result;
-    std::set_intersection(a->begin(), a->end(), b->begin(), b->end(), std::back_inserter(result));
-    return result;
-}
-
-static auto do_union(std::optional<std::vector<int>> const &a,
-                     std::optional<std::vector<int>> const &b) -> std::optional<std::vector<int>>
-{
-    if (!a.has_value() || !b.has_value()) {
-        return {};
-    }
-    std::vector<int> result;
-    std::set_union(a->begin(), a->end(), b->begin(), b->end(), std::back_inserter(result));
     return result;
 }
 
@@ -365,7 +373,6 @@ auto searcher::generate_cands(LlgMatcher *matcher,
 
     auto next_tokens = nonzero_pos(bitmask);
     fmt::println("lvl {}: {}", level, prev_prefix);
-    std::fflush(stdout);
 
     auto result = idset::empty();
     for (int token : next_tokens) {
@@ -385,7 +392,8 @@ auto searcher::generate_cands(LlgMatcher *matcher,
 
         auto matches = idset::empty();
         if (tok_to_sid.count(token) > 0) {
-            matches = tok_to_sid.at(token);
+            auto const &vec = tok_to_sid.at(token);
+            matches = idset::from_set(std::set<index_entry>(vec.begin(), vec.end()));
         }
 
         idset cands = idset::all();
@@ -394,7 +402,7 @@ auto searcher::generate_cands(LlgMatcher *matcher,
         } else {
             auto cur_prefix_view = absl::string_view(cur_prefix);
             if (RE2::Consume(&cur_prefix_view, search_regex)) {
-                result = result | matches;
+                result |= std::move(matches);
                 continue;
             }
 
@@ -409,7 +417,7 @@ auto searcher::generate_cands(LlgMatcher *matcher,
             }
         }
 
-        result = result | matches.followed_by(cands);
+        result = result |= matches.followed_by(cands);
     }
 
     if (level > 0) {
@@ -439,6 +447,7 @@ auto searcher::search(std::string const &search_term) const -> std::set<int>
 
         auto regex = fmt::format(".{{{}}}{}.*", pad_size, search_regex);
         fmt::println("Regex = {}", regex);
+        std::fflush(stdout);
 
         auto m = std::unique_ptr<LlgMatcher, LlgMatcherDeleter>(
             llg_new_matcher(&init, "regex", regex.c_str()));
@@ -446,9 +455,12 @@ auto searcher::search(std::string const &search_term) const -> std::set<int>
             throw std::runtime_error("Error constructing constraint");
         }
 
-        auto cands = generate_cands(m.get(), pad_size, search_regex, cache);
-        result = result | cands;
+        result |= generate_cands(m.get(), pad_size, search_regex, cache);
     }
+
+    fmt::println("idset_intersect_time = {}", idset_intersect_time);
+    fmt::println("idset_union_time = {}", idset_union_time);
+    fmt::println("nonzero_pos_time = {}", nonzero_pos_time);
 
     return std::set<int>(result);
 }

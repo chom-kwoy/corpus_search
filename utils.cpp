@@ -19,7 +19,7 @@ auto tokenize(LlgTokenizer *tokenizer, std::string const &string) -> std::vector
 }
 
 auto make_index(std::unordered_map<int, std::vector<int>> sentences)
-    -> std::unordered_map<int, idset>
+    -> std::unordered_map<int, std::vector<index_entry>>
 {
     auto map = std::unordered_map<int, std::vector<index_entry>>{};
     for (auto const &[sent_id, sentence] : sentences) {
@@ -32,9 +32,10 @@ auto make_index(std::unordered_map<int, std::vector<int>> sentences)
             pos += 1;
         }
     }
-    auto result = std::unordered_map<int, idset>{};
+    auto result = std::unordered_map<int, std::vector<index_entry>>{};
     for (auto &&[tok_id, entries] : map) {
-        result[tok_id] = idset::from_vec(std::move(entries));
+        std::sort(entries.begin(), entries.end());
+        result[tok_id] = std::move(entries);
     }
     return result;
 }

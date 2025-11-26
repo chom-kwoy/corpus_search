@@ -12,7 +12,7 @@ void measure_time(searcher const &s, std::string search_term)
 
     auto end_time = high_resolution_clock::now();
 
-    if (result.size() < 10000) {
+    if (result.size() < 200) {
         fmt::println("Result for '{}' = Array[{}]{{{}}}",
                      search_term,
                      result.size(),
@@ -21,7 +21,8 @@ void measure_time(searcher const &s, std::string search_term)
         fmt::println("Result for '{}' = Array[{}]{{...}}", search_term, result.size());
     }
 
-    fmt::println("Took {}.", duration_cast<milliseconds>(end_time - start_time));
+    auto elapsed = end_time - start_time;
+    fmt::println("Took {}.", duration_cast<duration<float>>(elapsed));
 }
 
 int main()
@@ -31,12 +32,12 @@ int main()
     // fmt::print("Press enter to continue");
     // std::getchar();
 
-    // measure_time(s, "z");
+    measure_time(s, "z");
     measure_time(s, "a");
-    // measure_time(s, "ho");
-    // measure_time(s, "sixtaxsoxngixta");
-    // measure_time(s, "ngixta");
-    // measure_time(s, "kaxnanxho");
+    measure_time(s, "ho");
+    measure_time(s, "sixtaxsoxngixta");
+    measure_time(s, "ngixta");
+    measure_time(s, "kaxnanxho");
 
     return 0;
 }

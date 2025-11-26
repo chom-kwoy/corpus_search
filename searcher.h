@@ -30,18 +30,19 @@ constexpr int MAX_TOKEN_LENGTH = 8; // in unicode characters
 
 struct idset
 {
-    std::optional<std::vector<index_entry>> data = std::vector<index_entry>{};
+    std::optional<std::set<index_entry>> data = std::set<index_entry>{};
 
-    static idset from_vec(std::vector<index_entry> &&vec, bool needs_sort = true);
+    static idset from_set(std::set<index_entry> &&set);
 
-    static idset all() { return idset{std::optional<std::vector<index_entry>>{}}; }
+    static idset all() { return idset{std::optional<std::set<index_entry>>{}}; }
     static idset empty() { return idset{}; }
 
     bool is_all() const { return !data.has_value(); }
     std::size_t size() const;
 
     idset followed_by(idset const &other) const;
-    idset operator|(idset const &other) const;
+    idset &operator|=(idset const &other);
+    idset &operator|=(idset &&other);
 
     explicit operator std::set<int>() const;
 };
@@ -49,7 +50,7 @@ struct idset
 class searcher
 {
     std::unordered_map<int, std::vector<int>> sentences;
-    std::unordered_map<int, idset> tok_to_sid;
+    std::unordered_map<int, std::vector<index_entry>> tok_to_sid;
     LlgTokenizer *ll_tokenizer = nullptr;
     std::unique_ptr<tokenizers::Tokenizer> tokenizer;
     std::unordered_map<int, std::string> tid_to_token;
