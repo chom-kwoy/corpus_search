@@ -11,7 +11,7 @@
     "test": "node src"
   },
   "binary": {
-    "napi_versions": [7]
+    "napi_versions": [4]
   },
   "author": "PARK Geon",
   "license": "ISC",

@@ -6,8 +6,6 @@ include(cmake/CPM.cmake)
 
 project(corpus_search LANGUAGES CXX)
 
-add_compile_definitions(NAPI_VERSION=7)
-
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -20,7 +18,6 @@ add_library(lib_corpus_search SHARED
     src/searcher.h
     src/node_register.cpp
 )
-set_target_properties(lib_corpus_search PROPERTIES PREFIX "" SUFFIX ".node")
 
 ########### Link External libraries ###########
 # fmt
@@ -81,10 +78,6 @@ CPMAddPackage(
 )
 
 target_link_libraries(lib_corpus_search PUBLIC roaring::roaring)
-
-# nodejs integration
-target_include_directories(lib_corpus_search PRIVATE ${CMAKE_JS_INC})
-target_link_libraries(lib_corpus_search ${CMAKE_JS_LIB})
 ##################################################
 
 # main executable
