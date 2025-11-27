@@ -33,12 +33,13 @@ int main()
     // fmt::print("Press enter to continue");
     // std::getchar();
 
-    measure_time(s, "z");
-    measure_time(s, "o");
-    measure_time(s, "ho");
-    measure_time(s, "sixtaxsoxngixta");
-    measure_time(s, "ngixta");
-    measure_time(s, "kaxnanxho");
+    // measure_time(s, "z");
+    // measure_time(s, "o");
+    // measure_time(s, "ho");
+    // measure_time(s, "sixtaxsoxngixta");
+    // measure_time(s, "ngixta");
+    // measure_time(s, "kaxnanxho");
+    measure_time(s, "國家");
 
     return 0;
 }

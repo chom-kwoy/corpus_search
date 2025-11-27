@@ -276,12 +276,14 @@ searcher::searcher(std::string const &tokenized_sentences_path,
     }
     std::string tokenizer_json = (std::stringstream{} << file.rdbuf()).str();
 
-    tokenizer = tokenizers::Tokenizer::FromBlobJSON(tokenizer_json);
+    auto tokenizer_data = nlohmann::json::parse(tokenizer_json);
+    tokenizer_data["pre_tokenizer"] = nullptr;
+    tokenizer = tokenizers::Tokenizer::FromBlobJSON(tokenizer_data.dump());
 
     const char sample_input[] = "kaxnanxho ngixta 國家";
     fmt::println("Loaded hf tokenizer. \"{}\" -> [{}]",
                  sample_input,
-                 fmt::join(tokenizer->Encode(sample_input), ", "));
+                 fmt::join(tokenizer->Encode(to_unicode(sample_input)), ", "));
 
     LlgTokenizerInit tok_init = {};
 
@@ -309,7 +311,6 @@ searcher::searcher(std::string const &tokenized_sentences_path,
                  fmt::join(tokenize(ll_tokenizer, sample_input), ", "));
     std::fflush(stdout);
 
-    auto tokenizer_data = nlohmann::json::parse(tokenizer_json);
     auto vocab = tokenizer_data["model"]["vocab"];
     for (auto const &[tok_str, tok_id] : vocab.items()) {
         tid_to_token[tok_id.get<int>()] = to_bytes(tok_str);
@@ -355,7 +356,17 @@ auto searcher::call_tokenize(const uint8_t *bytes,
                              uint32_t *output_tokens,
                              size_t output_tokens_len) const -> std::size_t
 {
-    auto result = tokenizer->Encode(std::string(bytes, bytes + bytes_len));
+    std::vector<std::int32_t> result;
+    try {
+        // handle incomplete utf8
+        auto encoded = to_unicode(std::string(bytes, bytes + bytes_len));
+        result = tokenizer->Encode(encoded);
+    } catch (...) {
+        fmt::println("Error thrown by tokenizer");
+        std::fflush(stdout);
+        std::terminate();
+    }
+
     for (int i = 0; i < std::min(result.size(), output_tokens_len); ++i) {
         output_tokens[i] = result[i];
     }

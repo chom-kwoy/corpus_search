@@ -17,6 +17,8 @@ auto make_index(std::unordered_map<int, std::vector<int>> sentences)
 
 auto to_bytes(std::string s) -> std::string;
 
+auto to_unicode(std::string s) -> std::string;
+
 class measure_time
 {
     std::chrono::duration<float> &m_timer;
