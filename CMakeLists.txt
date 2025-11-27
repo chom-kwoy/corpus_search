@@ -16,7 +16,6 @@ add_library(lib_corpus_search SHARED
     src/utils.h
     src/searcher.cpp
     src/searcher.h
-    src/node_register.cpp
 )
 
 ########### Link External libraries ###########
