@@ -1,4 +1,4 @@
-#include "../searcher.h"
+#include "searcher.h"
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>

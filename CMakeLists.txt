@@ -6,17 +6,21 @@ include(cmake/CPM.cmake)
 
 project(corpus_search LANGUAGES CXX)
 
+add_compile_definitions(NAPI_VERSION=7)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
-add_library(lib_corpus_search STATIC
-    utils.cpp
-    utils.h
-    searcher.cpp
-    searcher.h
+add_library(lib_corpus_search SHARED
+    src/utils.cpp
+    src/utils.h
+    src/searcher.cpp
+    src/searcher.h
+    src/node_register.cpp
 )
+set_target_properties(lib_corpus_search PROPERTIES PREFIX "" SUFFIX ".node")
 
 ########### Link External libraries ###########
 # fmt
@@ -25,6 +29,7 @@ FetchContent_Declare(
   GIT_REPOSITORY https://github.com/fmtlib/fmt
   GIT_TAG        e69e5f977d458f2650bb346dadf2ad30c5320281) # 10.2.1
 FetchContent_MakeAvailable(fmt)
+set_property(TARGET fmt PROPERTY POSITION_INDEPENDENT_CODE ON)
 
 target_link_libraries(lib_corpus_search PUBLIC fmt::fmt)
 
@@ -38,6 +43,7 @@ target_link_libraries(lib_corpus_search PUBLIC nlohmann_json::nlohmann_json)
 set(TOKENZIER_CPP_PATH "../tokenizers-cpp" CACHE PATH
     "Path to tokenizers-cpp library. Use `git clone https://github.com/mlc-ai/tokenizers-cpp.git --recurse-submodules`.")
 add_subdirectory(${TOKENZIER_CPP_PATH} tokenizers EXCLUDE_FROM_ALL)
+set_property(TARGET tokenizers_cpp PROPERTY POSITION_INDEPENDENT_CODE ON)
 
 target_link_libraries(lib_corpus_search PUBLIC tokenizers_cpp)
 
@@ -75,10 +81,14 @@ CPMAddPackage(
 )
 
 target_link_libraries(lib_corpus_search PUBLIC roaring::roaring)
+
+# nodejs integration
+target_include_directories(lib_corpus_search PRIVATE ${CMAKE_JS_INC})
+target_link_libraries(lib_corpus_search ${CMAKE_JS_LIB})
 ##################################################
 
 # main executable
-add_executable(corpus_search main.cpp)
+add_executable(corpus_search src/main.cpp)
 
 target_link_libraries(corpus_search PUBLIC lib_corpus_search)
 
@@ -104,6 +114,7 @@ target_link_libraries(test_corpus_search PUBLIC
     lib_corpus_search
     GTest::gmock_main
 )
+target_include_directories(test_corpus_search PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 
 include(GoogleTest)
 gtest_discover_tests(test_corpus_search)
