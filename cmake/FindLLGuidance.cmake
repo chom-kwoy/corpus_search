@@ -2,7 +2,7 @@
 find_library(LLGUIDANCE_LIBRARY
     NAMES llguidance
     # Look in a user-provided root, or standard system paths
-    HINTS "${LLGUIDANCE_ROOT}/target/debug" ENV LLGUIDANCE_ROOT
+    HINTS "${LLGUIDANCE_ROOT}/target/release" ENV LLGUIDANCE_ROOT
     PATH_SUFFIXES lib
 )
 
