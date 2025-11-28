@@ -457,7 +457,7 @@ auto searcher::generate_cands(LlgMatcher *matcher,
     using vec_pointer = std::vector<index_entry> const *;
     using vec_object = std::vector<index_entry>;
     using pointer_or_object = std::variant<vec_pointer, vec_object>;
-    auto vec_result = std::vector<pointer_or_object>{};
+    auto cand_lists = std::vector<pointer_or_object>{};
 
     for (int token : next_tokens) {
         assert(token != EOS_TOKEN_ID);
@@ -480,13 +480,13 @@ auto searcher::generate_cands(LlgMatcher *matcher,
         if (cache.count(cur_prefix) > 0) {
             auto const &cands = cache.at(cur_prefix);
 
-            vec_result.push_back(followed_by(matches, cands));
+            cand_lists.push_back(followed_by(matches, cands));
             continue;
         }
 
         auto cur_prefix_view = absl::string_view(cur_prefix);
         if (RE2::Consume(&cur_prefix_view, search_regex)) {
-            vec_result.push_back(&matches);
+            cand_lists.push_back(&matches);
             continue;
         }
 
@@ -500,8 +500,21 @@ auto searcher::generate_cands(LlgMatcher *matcher,
             throw std::runtime_error("llg_matcher_rollback returned error");
         }
 
-        vec_result.push_back(followed_by(matches, cands));
+        cand_lists.push_back(followed_by(matches, cands));
     }
+
+    // union the sorted sequences in vec_result
+    auto result = std::vector<index_entry>{};
+
+    using queue_item = std::tuple<index_entry, int, int>;
+    struct comparator
+    {
+        bool operator()(queue_item const &l, queue_item const &r)
+        {
+            return std::get<0>(r) < std::get<0>(l);
+        }
+    };
+    auto pending = std::priority_queue<queue_item, std::vector<queue_item>, comparator>{};
 
     auto get_size = [](auto &&x) {
         return std::visit(
@@ -528,26 +541,25 @@ auto searcher::generate_cands(LlgMatcher *matcher,
             x);
     };
 
-    // union the sorted sequences in vec_result
-    std::vector<index_entry> result;
-    std::priority_queue<std::tuple<int, int, index_entry>> pending;
-    for (int i = 0; i < vec_result.size(); ++i) {
-        if (get_size(vec_result[i]) >= 1) {
-            pending.push({i, 0, get_item(vec_result[i], 0)});
+    for (int i = 0; i < cand_lists.size(); ++i) {
+        if (get_size(cand_lists[i]) >= 1) {
+            pending.push({get_item(cand_lists[i], 0), i, 0});
         }
     }
-    while (pending.size() > 0) {
-        auto [vec_index, item_index, item] = pending.top();
+    while (!pending.empty()) {
+        auto [item, vec_index, item_index] = pending.top();
         pending.pop();
-        if (item_index + 1 < get_size(vec_result[vec_index])) {
+        if (item_index + 1 < get_size(cand_lists[vec_index])) {
             pending.push({
+                get_item(cand_lists[vec_index], item_index + 1),
                 vec_index,
                 item_index + 1,
-                get_item(vec_result[vec_index], item_index + 1),
             });
         }
         result.push_back(item);
     }
+
+    assert(std::is_sorted(result.begin(), result.end()));
 
     if (level > 0) {
         cache[prev_prefix] = result;

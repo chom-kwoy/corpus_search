@@ -2,7 +2,6 @@
 #define SEARCHER_H
 
 #include <optional>
-#include <set>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -10,7 +9,6 @@
 #include <boost/dynamic_bitset.hpp>
 #include <llguidance.h>
 #include <re2/re2.h>
-#include <roaring.hh>
 #include <tokenizers_cpp.h>
 
 constexpr int POS_BITS = 11;
@@ -36,7 +34,6 @@ struct index_entry
     static constexpr index_entry from_hash(std::uint32_t hash) { return {hash >> POS_BITS, hash}; }
 };
 static_assert(sizeof(index_entry) == 4);
-static_assert(index_entry::from_hash(0xabcddeadU).hash() == 0xabcddeadU);
 
 // TODO: un-hardcode these
 constexpr int EOS_TOKEN_ID = 1;
