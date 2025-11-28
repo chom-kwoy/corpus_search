@@ -4,14 +4,18 @@ include(FetchContent)
 include(GNUInstallDirs)
 include(cmake/CPM.cmake)
 
-project(corpus_search LANGUAGES CXX)
+project(corpus_search LANGUAGES C CXX)
+
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED OFF)
+set(CMAKE_C_EXTENSIONS ON)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
-add_library(lib_corpus_search SHARED
+add_library(lib_corpus_search
     src/utils.cpp
     src/utils.h
     src/searcher.cpp
@@ -81,38 +85,45 @@ target_link_libraries(lib_corpus_search PRIVATE utf8cpp)
 ##################################################
 
 # Installation
-set_target_properties(lib_corpus_search PROPERTIES PREFIX "")
-
 execute_process(
-    COMMAND pg_config --sharedir
-    OUTPUT_VARIABLE pg_sharedir
-    RESULT_VARIABLE pg_sharedir_obtained
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-execute_process(
-    COMMAND pg_config --pkglibdir
-    OUTPUT_VARIABLE pg_pkglibdir
-    RESULT_VARIABLE pg_pkglibdir_obtained
+    COMMAND pg_config --includedir-server
+    OUTPUT_VARIABLE pg_includedir
+    RESULT_VARIABLE pg_includedir_obtained
     OUTPUT_STRIP_TRAILING_WHITESPACE
 )
 
-if ((pg_sharedir_obtained EQUAL 0) AND (pg_pkglibdir_obtained EQUAL 0))
+if ((pg_includedir_obtained EQUAL 0) AND (EXISTS "${pg_includedir}"))
+    message(STATUS "Found PostgreSQL server header files in ${pg_includedir}.")
+    add_library(ibpe SHARED src/postgres.c)
+
+    target_link_libraries(ibpe PRIVATE lib_corpus_search)
+    target_include_directories(ibpe PRIVATE ${pg_includedir})
+
+    set_target_properties(ibpe PROPERTIES PREFIX "")
+
+    execute_process(
+        COMMAND pg_config --sharedir
+        OUTPUT_VARIABLE pg_sharedir
+        RESULT_VARIABLE pg_sharedir_obtained
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+    execute_process(
+        COMMAND pg_config --pkglibdir
+        OUTPUT_VARIABLE pg_pkglibdir
+        RESULT_VARIABLE pg_pkglibdir_obtained
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+
     message(STATUS "Will install postgres extension to ${pg_sharedir}/extension and ${pg_pkglibdir}")
 
     # install
     install(DIRECTORY src/extension/ DESTINATION "${pg_sharedir}/extension")
-    install(TARGETS lib_corpus_search
-        LIBRARY DESTINATION ${pg_pkglibdir}
-    )
+    install(TARGETS ibpe LIBRARY DESTINATION ${pg_pkglibdir})
 
 else()
-    message(AUTHOR_WARNING "Cannot find postgres sharedir. Installation disabled")
+    message(AUTHOR_WARNING "Cannot find PostgreSQL server header files (${pg_includedir}). Extension installation disabled.")
+    message(AUTHOR_WARNING "Hint: Try installing postgresql-server-dev-18.")
 endif()
-
-# Main executable
-add_executable(corpus_search src/main.cpp)
-
-target_link_libraries(corpus_search PUBLIC lib_corpus_search)
 
 # Testing
 FetchContent_Declare(
