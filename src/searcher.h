@@ -7,9 +7,7 @@
 #include <vector>
 
 #include <boost/dynamic_bitset.hpp>
-#include <llguidance.h>
 #include <re2/re2.h>
-#include <tokenizers_cpp.h>
 
 constexpr int POS_BITS = 11;
 constexpr int MAX_POS = (1 << POS_BITS) - 1;
@@ -49,6 +47,11 @@ constexpr int MAX_TOKEN_LENGTH = 8; // in unicode characters
 
 using candset = std::optional<std::vector<index_entry>>;
 
+class LlgTokenizer;
+class LlgMatcher;
+namespace tokenizers {
+class Tokenizer;
+}
 class searcher
 {
     std::unordered_map<int, std::vector<int>> sentences;

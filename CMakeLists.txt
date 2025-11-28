@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.28)
 
 include(FetchContent)
 include(GNUInstallDirs)
@@ -23,17 +23,19 @@ add_library(lib_corpus_search SHARED
 FetchContent_Declare(
   fmt
   GIT_REPOSITORY https://github.com/fmtlib/fmt
-  GIT_TAG        e69e5f977d458f2650bb346dadf2ad30c5320281) # 10.2.1
+  GIT_TAG        e69e5f977d458f2650bb346dadf2ad30c5320281  # 10.2.1
+  EXCLUDE_FROM_ALL
+)
 FetchContent_MakeAvailable(fmt)
 set_property(TARGET fmt PROPERTY POSITION_INDEPENDENT_CODE ON)
 
-target_link_libraries(lib_corpus_search PUBLIC fmt::fmt)
+target_link_libraries(lib_corpus_search PRIVATE fmt::fmt)
 
 # nlohmann json
 FetchContent_Declare(json URL https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz)
 FetchContent_MakeAvailable(json)
 
-target_link_libraries(lib_corpus_search PUBLIC nlohmann_json::nlohmann_json)
+target_link_libraries(lib_corpus_search PRIVATE nlohmann_json::nlohmann_json)
 
 # tokenizers-cpp
 set(TOKENZIER_CPP_PATH "../tokenizers-cpp" CACHE PATH
@@ -41,59 +43,82 @@ set(TOKENZIER_CPP_PATH "../tokenizers-cpp" CACHE PATH
 add_subdirectory(${TOKENZIER_CPP_PATH} tokenizers EXCLUDE_FROM_ALL)
 set_property(TARGET tokenizers_cpp PROPERTY POSITION_INDEPENDENT_CODE ON)
 
-target_link_libraries(lib_corpus_search PUBLIC tokenizers_cpp)
-
-# msgpack-cxx (included by tokenizers-cpp)
-#find_package(msgpack-cxx REQUIRED)
-#target_link_libraries(lib_corpus_search PUBLIC msgpack-cxx)
+target_link_libraries(lib_corpus_search PRIVATE tokenizers_cpp)
 
 # llguidance
 find_package(LLGuidance REQUIRED)
 
-target_link_libraries(lib_corpus_search PUBLIC LLGuidance::LLGuidance)
+target_link_libraries(lib_corpus_search PRIVATE LLGuidance::LLGuidance)
 
 # boost dynamic_bitset
 find_package(Boost REQUIRED)
 
-target_include_directories(lib_corpus_search PUBLIC ${Boost_INCLUDE_DIRS})
+target_include_directories(lib_corpus_search PRIVATE ${Boost_INCLUDE_DIRS})
 
 # re2 (version 2023-11-01)
 find_package(re2 REQUIRED)
 
-target_link_libraries(lib_corpus_search PUBLIC re2::re2)
+target_link_libraries(lib_corpus_search PRIVATE re2::re2)
 
 # utf8cpp
 add_library(utf8cpp INTERFACE)
 target_include_directories(utf8cpp INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/utf8cpp")
 
-target_link_libraries(lib_corpus_search PUBLIC utf8cpp)
+target_link_libraries(lib_corpus_search PRIVATE utf8cpp)
 
-# roaring bitmap
+## msgpack-cxx (included by tokenizers-cpp)
+# find_package(msgpack-cxx REQUIRED)
+# target_link_libraries(lib_corpus_search PUBLIC msgpack-cxx)
+#
+## roaring bitmap
 # CPMAddPackage(
 #   NAME roaring
 #   GITHUB_REPOSITORY "RoaringBitmap/CRoaring"
 #   GIT_TAG v2.0.4
 #   OPTIONS "ENABLE_ROARING_TESTS OFF"
 # )
-
-# target_link_libraries(lib_corpus_search PUBLIC roaring::roaring)
+# target_link_libraries(lib_corpus_search PRIVATE roaring::roaring)
 ##################################################
 
-# main executable
+# Installation
+set_target_properties(lib_corpus_search PROPERTIES PREFIX "")
+
+execute_process(
+    COMMAND pg_config --sharedir
+    OUTPUT_VARIABLE pg_sharedir
+    RESULT_VARIABLE pg_sharedir_obtained
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+execute_process(
+    COMMAND pg_config --pkglibdir
+    OUTPUT_VARIABLE pg_pkglibdir
+    RESULT_VARIABLE pg_pkglibdir_obtained
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+
+if ((pg_sharedir_obtained EQUAL 0) AND (pg_pkglibdir_obtained EQUAL 0))
+    message(STATUS "Will install postgres extension to ${pg_sharedir}/extension and ${pg_pkglibdir}")
+
+    # install
+    install(DIRECTORY src/extension/ DESTINATION "${pg_sharedir}/extension")
+    install(TARGETS lib_corpus_search
+        LIBRARY DESTINATION ${pg_pkglibdir}
+    )
+
+else()
+    message(AUTHOR_WARNING "Cannot find postgres sharedir. Installation disabled")
+endif()
+
+# Main executable
 add_executable(corpus_search src/main.cpp)
 
 target_link_libraries(corpus_search PUBLIC lib_corpus_search)
-
-# install
-install(TARGETS corpus_search
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-)
 
 # Testing
 FetchContent_Declare(
   googletest
   URL https://github.com/google/googletest/archive/03597a01ee50ed33e9dfd640b249b4be3799d395.zip
+  EXCLUDE_FROM_ALL
 )
 # For Windows: Prevent overriding the parent project's compiler/linker settings
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
@@ -105,6 +130,7 @@ add_executable(test_corpus_search test/test.cpp)
 target_link_libraries(test_corpus_search PUBLIC
     lib_corpus_search
     GTest::gmock_main
+    fmt::fmt
 )
 target_include_directories(test_corpus_search PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 

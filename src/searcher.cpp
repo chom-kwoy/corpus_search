@@ -8,9 +8,11 @@
 #include <fmt/chrono.h>
 #include <fmt/core.h>
 #include <fmt/ranges.h>
+#include <llguidance.h>
 #include <msgpack.hpp>
 #include <nlohmann/json.hpp>
 #include <re2/re2.h>
+#include <tokenizers_cpp.h>
 #include <utf8.h>
 
 namespace { // static linkage

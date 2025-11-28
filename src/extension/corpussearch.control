@@ -1,0 +1,5 @@
+# corpussearch extension
+comment = 'BPE tokenizer based inverted index'
+default_version = '1.0'
+module_pathname = '$libdir/lib_corpus_search'
+relocatable = true
