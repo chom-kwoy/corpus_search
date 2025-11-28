@@ -8,7 +8,6 @@
 #include <roaring.hh>
 
 struct index_entry;
-struct candset;
 
 auto tokenize(LlgTokenizer *tokenizer, std::string const &string) -> std::vector<std::uint32_t>;
 

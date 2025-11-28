@@ -33,6 +33,7 @@ int main()
     // fmt::print("Press enter to continue");
     // std::getchar();
 
+    measure_time(s, "hoxni");
     measure_time(s, "z");
     measure_time(s, "o");
     measure_time(s, "ho");

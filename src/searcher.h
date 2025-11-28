@@ -43,26 +43,7 @@ constexpr int EOS_TOKEN_ID = 1;
 constexpr int VOCAB_SIZE = 65536;
 constexpr int MAX_TOKEN_LENGTH = 8; // in unicode characters
 
-struct candset
-{
-    std::optional<roaring::Roaring> data = roaring::Roaring{};
-
-    static candset from_set(roaring::Roaring &&set);
-    static candset from_vec(std::vector<index_entry> const &vec);
-
-    static candset all() { return candset{std::optional<roaring::Roaring>{}}; }
-    static candset empty() { return candset{}; }
-
-    bool is_all() const { return !data.has_value(); }
-    std::size_t size() const;
-
-    candset followed_by(candset const &other) const;
-    candset &operator|=(candset const &other);
-    candset &operator|=(candset &&other);
-    candset &operator|=(std::vector<index_entry> const &other);
-
-    std::vector<int> sent_ids() const;
-};
+using candset = std::optional<std::vector<index_entry>>;
 
 class searcher
 {
