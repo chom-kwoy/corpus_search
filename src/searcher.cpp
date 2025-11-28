@@ -2,186 +2,24 @@
 
 #include "utils.h"
 
-#include <chrono>
 #include <fstream>
 #include <queue>
 
 #include <fmt/chrono.h>
 #include <fmt/core.h>
 #include <fmt/ranges.h>
+#include <msgpack.hpp>
 #include <nlohmann/json.hpp>
 #include <re2/re2.h>
 #include <utf8.h>
 
 namespace { // static linkage
 
-std::chrono::duration<float> idset_intersect_time = {};
-
-auto followed_by(std::vector<index_entry> const &self,
-                 candset const &other) -> std::vector<index_entry>
+auto get_sent_ids(std::vector<index_entry> const &self) -> std::vector<int>
 {
-    measure_time timer(idset_intersect_time);
-
-    if (!other.has_value()) {
-        return self;
-    }
-
-    auto const &arr1 = self;
-    auto const &arr2 = other.value();
-
-    std::vector<index_entry> result;
-
-    auto it1 = arr1.begin(), it2 = arr2.begin();
-    while (it1 != arr1.end() && it2 != arr2.end()) {
-        auto entry1 = *it1;
-        auto entry2 = *it2;
-        if (entry1.sent_id < entry2.sent_id) {
-            ++it1;
-        } else {
-            if (entry1.sent_id == entry2.sent_id) {
-                if (entry1.pos + 1 < entry2.pos) {
-                    ++it1;
-                } else if (entry1.pos + 1 == entry2.pos) {
-                    result.push_back(*it1);
-                    ++it1;
-                    ++it2;
-                } else {
-                    ++it2;
-                }
-            } else {
-                ++it2;
-            }
-        }
-    }
-
-    return result;
-}
-
-auto followed_by(candset const &self, candset const &other) -> candset
-{
-    measure_time timer(idset_intersect_time);
-
-    if (!other.has_value()) {
-        return self;
-    }
-
-    if (!self.has_value()) {
-        std::vector<index_entry> result;
-        for (auto entry : other.value()) {
-            if (entry.pos - 1 >= 0) {
-                result.push_back(index_entry{
-                    entry.sent_id,
-                    static_cast<unsigned int>(entry.pos - 1),
-                });
-            }
-        }
-        return result;
-    }
-
-    auto const &arr1 = self.value();
-    auto const &arr2 = other.value();
-
-    std::vector<index_entry> result;
-
-    auto it1 = arr1.begin(), it2 = arr2.begin();
-    while (it1 != arr1.end() && it2 != arr2.end()) {
-        auto entry1 = *it1;
-        auto entry2 = *it2;
-        if (entry1.sent_id < entry2.sent_id) {
-            ++it1;
-        } else {
-            if (entry1.sent_id == entry2.sent_id) {
-                if (entry1.pos + 1 < entry2.pos) {
-                    ++it1;
-                } else if (entry1.pos + 1 == entry2.pos) {
-                    result.push_back(*it1);
-                    ++it1;
-                    ++it2;
-                } else {
-                    ++it2;
-                }
-            } else {
-                ++it2;
-            }
-        }
-    }
-
-    return result;
-}
-
-std::chrono::duration<float> idset_union_time = {};
-
-auto operator|=(candset &self, candset const &other) -> candset &
-{
-    measure_time timer(idset_union_time);
-
-    if (!self.has_value() || !other.has_value()) {
-        self.reset();
-        return self;
-    }
-
-    auto &arr1 = self.value();
-    auto const &arr2 = other.value();
-
-    std::vector<index_entry> result;
-    std::set_union(arr1.begin(), arr1.end(), arr2.begin(), arr2.end(), std::back_inserter(result));
-
-    arr1 = std::move(result);
-
-    return self;
-}
-
-auto operator|=(candset &self, candset &&other) -> candset &
-{
-    measure_time timer(idset_union_time);
-
-    if (!self.has_value() || !other.has_value()) {
-        self.reset();
-        return self;
-    }
-
-    auto &arr1 = self.value();
-    auto &arr2 = other.value();
-
-    if (arr2.size() > arr1.size()) {
-        std::swap(arr1, arr2);
-    }
-
-    std::vector<index_entry> result;
-    std::set_union(arr1.begin(), arr1.end(), arr2.begin(), arr2.end(), std::back_inserter(result));
-
-    arr1 = std::move(result);
-
-    return self;
-}
-
-auto operator|=(candset &self, std::vector<index_entry> const &other) -> candset &
-{
-    measure_time timer(idset_union_time);
-
-    if (!self.has_value()) {
-        self.reset();
-        return self;
-    }
-
-    auto &arr1 = self.value();
-
-    std::vector<index_entry> result;
-    std::set_union(arr1.begin(), arr1.end(), other.begin(), other.end(), std::back_inserter(result));
-
-    arr1 = std::move(result);
-
-    return self;
-}
-
-auto get_sent_ids(candset &self) -> std::vector<int>
-{
-    if (!self.has_value()) {
-        throw std::runtime_error("cannot convert universal set");
-    }
     std::vector<int> output;
     int last_sent_id = -1;
-    for (auto entry : self.value()) {
+    for (auto entry : self) {
         if (entry.sent_id != last_sent_id) {
             output.push_back(entry.sent_id);
         }
@@ -261,12 +99,8 @@ static auto to_bitset(std::uint32_t const *mask, int len) -> boost::dynamic_bits
     return result;
 }
 
-std::chrono::duration<float> nonzero_pos_time = {};
-
 static auto nonzero_pos(boost::dynamic_bitset<> const &mask) -> std::vector<int>
 {
-    measure_time timer(nonzero_pos_time);
-
     std::vector<int> result;
     int cnt = mask.count();
     if (cnt == 0) {
@@ -434,76 +268,52 @@ auto searcher::call_tokenize(const uint8_t *bytes,
     return result.size();
 }
 
-auto searcher::generate_cands(LlgMatcher *matcher,
-                              int pad_size,
-                              RE2 const &search_regex,
-                              std::unordered_map<std::string, candset> &cache,
-                              std::string const &prev_prefix,
-                              int level) const -> candset
+namespace {
+
+auto followed_by(std::vector<index_entry> const &self,
+                 candset const &other) -> std::vector<index_entry>
 {
-    if (llg_matcher_compute_mask(matcher)) {
-        throw std::runtime_error("Error computing mask");
+    if (!other.has_value()) {
+        return self;
     }
 
-    auto bitmask = to_bitset(llg_matcher_get_mask(matcher), VOCAB_SIZE);
+    auto const &arr1 = self;
+    auto const &arr2 = other.value();
 
-    if (level == 0) {
-        bitmask &= gt_n_char_masks.at(pad_size);
-    }
+    std::vector<index_entry> result;
 
-    auto next_tokens = nonzero_pos(bitmask);
-    fmt::println("lvl {}: '{}' (+ {} tokens)", level, prev_prefix, next_tokens.size());
-
-    using vec_pointer = std::vector<index_entry> const *;
-    using vec_object = std::vector<index_entry>;
-    using pointer_or_object = std::variant<vec_pointer, vec_object>;
-    auto cand_lists = std::vector<pointer_or_object>{};
-
-    for (int token : next_tokens) {
-        assert(token != EOS_TOKEN_ID);
-
-        auto cur_prefix = prev_prefix + tid_to_token.at(token);
-        if (level == 0) {
-            auto it = cur_prefix.begin();
-            for (int i = 0; i < pad_size; ++i) {
-                utf8::next(it, cur_prefix.end());
+    auto it1 = arr1.begin(), it2 = arr2.begin();
+    while (it1 != arr1.end() && it2 != arr2.end()) {
+        auto entry1 = *it1;
+        auto entry2 = *it2;
+        if (entry1.sent_id < entry2.sent_id) {
+            ++it1;
+        } else {
+            if (entry1.sent_id == entry2.sent_id) {
+                if (entry1.pos + 1 < entry2.pos) {
+                    ++it1;
+                } else if (entry1.pos + 1 == entry2.pos) {
+                    result.push_back(*it1);
+                    ++it1;
+                    ++it2;
+                } else {
+                    ++it2;
+                }
+            } else {
+                ++it2;
             }
-            cur_prefix = cur_prefix.substr(it - cur_prefix.begin());
         }
-
-        if (tok_to_sid.count(token) == 0) {
-            continue;
-        }
-
-        auto const &matches = tok_to_sid.at(token);
-
-        if (cache.count(cur_prefix) > 0) {
-            auto const &cands = cache.at(cur_prefix);
-
-            cand_lists.push_back(followed_by(matches, cands));
-            continue;
-        }
-
-        auto cur_prefix_view = absl::string_view(cur_prefix);
-        if (RE2::Consume(&cur_prefix_view, search_regex)) {
-            cand_lists.push_back(&matches);
-            continue;
-        }
-
-        if (llg_matcher_consume_token(matcher, token)) {
-            throw std::runtime_error("llg_matcher_consume_token returned error");
-        }
-
-        auto cands = generate_cands(matcher, pad_size, search_regex, cache, cur_prefix, level + 1);
-
-        if (llg_matcher_rollback(matcher, 1)) {
-            throw std::runtime_error("llg_matcher_rollback returned error");
-        }
-
-        cand_lists.push_back(followed_by(matches, cands));
     }
 
-    // union the sorted sequences in vec_result
+    return result;
+}
+
+using vec_pointer = std::vector<index_entry> const *;
+using vec_object = std::vector<index_entry>;
+using pointer_or_object = std::variant<vec_pointer, vec_object>;
+
+auto merge_sorted_lists(std::vector<pointer_or_object> const &cand_lists) -> std::vector<index_entry>
+{
     auto result = std::vector<index_entry>{};
 
     using queue_item = std::tuple<index_entry, int, int>;
@@ -556,10 +366,85 @@ auto searcher::generate_cands(LlgMatcher *matcher,
                 item_index + 1,
             });
         }
-        result.push_back(item);
+        if (result.size() == 0 || item != result.back()) {
+            result.push_back(item);
+        }
     }
 
     assert(std::is_sorted(result.begin(), result.end()));
+
+    return result;
+}
+} // namespace
+
+auto searcher::generate_cands(LlgMatcher *matcher,
+                              int pad_size,
+                              RE2 const &search_regex,
+                              std::unordered_map<std::string, candset> &cache,
+                              std::string const &prev_prefix,
+                              int level) const -> std::vector<index_entry>
+{
+    if (llg_matcher_compute_mask(matcher)) {
+        throw std::runtime_error("Error computing mask");
+    }
+
+    auto bitmask = to_bitset(llg_matcher_get_mask(matcher), VOCAB_SIZE);
+
+    if (level == 0) {
+        bitmask &= gt_n_char_masks.at(pad_size);
+    }
+
+    auto next_tokens = nonzero_pos(bitmask);
+    fmt::println("lvl {}: '{}' (+ {} tokens)", level, prev_prefix, next_tokens.size());
+
+    auto cand_lists = std::vector<pointer_or_object>{};
+
+    for (int token : next_tokens) {
+        assert(token != EOS_TOKEN_ID);
+
+        auto cur_prefix = prev_prefix + tid_to_token.at(token);
+        if (level == 0) {
+            auto it = cur_prefix.begin();
+            for (int i = 0; i < pad_size; ++i) {
+                utf8::next(it, cur_prefix.end());
+            }
+            cur_prefix = cur_prefix.substr(it - cur_prefix.begin());
+        }
+
+        if (tok_to_sid.count(token) == 0) {
+            continue;
+        }
+
+        auto const &matches = tok_to_sid.at(token);
+
+        if (cache.count(cur_prefix) > 0) {
+            auto const &cands = cache.at(cur_prefix);
+
+            cand_lists.push_back(followed_by(matches, cands));
+            continue;
+        }
+
+        auto cur_prefix_view = absl::string_view(cur_prefix);
+        if (RE2::Consume(&cur_prefix_view, search_regex)) {
+            cand_lists.push_back(&matches);
+            continue;
+        }
+
+        if (llg_matcher_consume_token(matcher, token)) {
+            throw std::runtime_error("llg_matcher_consume_token returned error");
+        }
+
+        auto cands = generate_cands(matcher, pad_size, search_regex, cache, cur_prefix, level + 1);
+
+        if (llg_matcher_rollback(matcher, 1)) {
+            throw std::runtime_error("llg_matcher_rollback returned error");
+        }
+
+        cand_lists.push_back(followed_by(matches, cands));
+    }
+
+    // union the sorted sequences in vec_result
+    auto result = merge_sorted_lists(cand_lists);
 
     if (level > 0) {
         cache[prev_prefix] = result;
@@ -580,7 +465,7 @@ auto searcher::search(std::string const &search_term) const -> std::vector<int>
 
     auto search_regex = RE2::QuoteMeta(search_term);
 
-    auto result = candset{std::vector<index_entry>{}};
+    auto cand_lists = std::vector<pointer_or_object>{};
 
     std::unordered_map<std::string, candset> cache;
     for (int pad_size = 0; pad_size < MAX_TOKEN_LENGTH; ++pad_size) {
@@ -596,22 +481,10 @@ auto searcher::search(std::string const &search_term) const -> std::vector<int>
             throw std::runtime_error("Error constructing constraint");
         }
 
-        result |= generate_cands(m.get(), pad_size, RE2(search_regex), cache);
+        auto cands = generate_cands(m.get(), pad_size, RE2(search_regex), cache);
+
+        cand_lists.push_back(std::move(cands));
     }
 
-    auto sent_ids = std::vector<int>{};
-
-    std::chrono::duration<float> sent_ids_conv_time = {};
-    {
-        measure_time timer(sent_ids_conv_time);
-
-        sent_ids = get_sent_ids(result);
-    }
-
-    fmt::println("idset_intersect_time = {}", idset_intersect_time);
-    fmt::println("idset_union_time = {}", idset_union_time);
-    fmt::println("nonzero_pos_time = {}", nonzero_pos_time);
-    fmt::println("sent_ids_conv_time = {}", sent_ids_conv_time);
-
-    return sent_ids;
+    return get_sent_ids(merge_sorted_lists(cand_lists));
 }

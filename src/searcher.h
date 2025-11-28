@@ -24,13 +24,20 @@ struct index_entry
     unsigned int sent_id : SENTID_BITS;
     unsigned int pos : POS_BITS;
 
-    constexpr std::uint32_t hash() const { return (sent_id << POS_BITS) | pos; }
-
     bool operator<(index_entry const &other) const
     {
         return std::tie(sent_id, pos) < std::tie(other.sent_id, other.pos);
     }
+    bool operator==(index_entry const &other) const
+    {
+        return std::tie(sent_id, pos) == std::tie(other.sent_id, other.pos);
+    }
+    bool operator!=(index_entry const &other) const
+    {
+        return std::tie(sent_id, pos) != std::tie(other.sent_id, other.pos);
+    }
 
+    constexpr std::uint32_t hash() const { return (sent_id << POS_BITS) | pos; }
     static constexpr index_entry from_hash(std::uint32_t hash) { return {hash >> POS_BITS, hash}; }
 };
 static_assert(sizeof(index_entry) == 4);
@@ -61,7 +68,7 @@ class searcher
                         RE2 const &search_regex,
                         std::unordered_map<std::string, candset> &cache,
                         std::string const &prev_prefix = "",
-                        int level = 0) const -> candset;
+                        int level = 0) const -> std::vector<index_entry>;
 
 public:
     searcher(std::string const &tokenized_sentences_path, std::string const &tokenizer_json_path);

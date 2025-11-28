@@ -69,14 +69,14 @@ target_include_directories(utf8cpp INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/utf8cp
 target_link_libraries(lib_corpus_search PUBLIC utf8cpp)
 
 # roaring bitmap
-CPMAddPackage(
-  NAME roaring
-  GITHUB_REPOSITORY "RoaringBitmap/CRoaring"
-  GIT_TAG v2.0.4
-  OPTIONS "ENABLE_ROARING_TESTS OFF"
-)
+# CPMAddPackage(
+#   NAME roaring
+#   GITHUB_REPOSITORY "RoaringBitmap/CRoaring"
+#   GIT_TAG v2.0.4
+#   OPTIONS "ENABLE_ROARING_TESTS OFF"
+# )
 
-target_link_libraries(lib_corpus_search PUBLIC roaring::roaring)
+# target_link_libraries(lib_corpus_search PUBLIC roaring::roaring)
 ##################################################
 
 # main executable
