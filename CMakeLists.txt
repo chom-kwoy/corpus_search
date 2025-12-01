@@ -94,8 +94,12 @@ execute_process(
 
 if ((pg_includedir_obtained EQUAL 0) AND (EXISTS "${pg_includedir}"))
     message(STATUS "Found PostgreSQL server header files in ${pg_includedir}.")
-    add_library(ibpe SHARED src/postgres.c)
+    add_library(ibpe SHARED
+        src/pg_extension.c
+        src/pg_extension.h
+    )
 
+    target_compile_definitions(ibpe PRIVATE USE_ASSERT_CHECKING)
     target_link_libraries(ibpe PRIVATE lib_corpus_search)
     target_include_directories(ibpe PRIVATE ${pg_includedir})
 
