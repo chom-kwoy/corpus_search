@@ -1,6 +1,7 @@
-#include "searcher.h"
+#include "searcher.hpp"
 
-#include "utils.h"
+#include "index_builder.hpp"
+#include "utils.hpp"
 
 #include <fstream>
 #include <queue>
@@ -14,6 +15,8 @@
 #include <re2/re2.h>
 #include <tokenizers_cpp.h>
 #include <utf8.h>
+
+namespace corpus_search {
 
 namespace { // static linkage
 
@@ -87,7 +90,7 @@ auto load_file(std::string const &path) -> std::unordered_map<int, std::vector<i
 
 static auto to_bitset(std::uint32_t const *mask, int len) -> boost::dynamic_bitset<>
 {
-    auto result = boost::dynamic_bitset<>(VOCAB_SIZE);
+    auto result = boost::dynamic_bitset<>(len);
     for (int i = 0; i < (len + 31) / 32; ++i) {
         if (mask[i] == 0) {
             continue;
@@ -120,6 +123,7 @@ static auto nonzero_pos(boost::dynamic_bitset<> const &mask) -> std::vector<int>
 
 searcher::searcher(std::string const &tokenized_sentences_path,
                    std::string const &tokenizer_json_path)
+    : tok(tokenizer_json_path, true)
 {
     // load index
     fmt::println("Loading sentences...");
@@ -163,58 +167,8 @@ searcher::searcher(std::string const &tokenized_sentences_path,
     fmt::println("Made index. Index size = {} MB", bytes / 1'000'000);
     std::fflush(stdout);
 
-    // load tokenizer
-    fmt::println("Loading tokenizer...");
-    std::fflush(stdout);
-
-    auto file = std::ifstream(tokenizer_json_path);
-    if (!file.is_open()) {
-        throw std::runtime_error("Error opening tokenizer file");
-    }
-    std::string tokenizer_json = (std::stringstream{} << file.rdbuf()).str();
-
-    auto tokenizer_data = nlohmann::json::parse(tokenizer_json);
-    tokenizer_data["pre_tokenizer"] = nullptr;
-    tokenizer = tokenizers::Tokenizer::FromBlobJSON(tokenizer_data.dump());
-
-    const char sample_input[] = "kaxnanxho ngixta 國家";
-    fmt::println("Loaded hf tokenizer. \"{}\" -> [{}]",
-                 sample_input,
-                 fmt::join(tokenizer->Encode(to_unicode(sample_input)), ", "));
-
-    LlgTokenizerInit tok_init = {};
-
-    tok_init.tok_eos = EOS_TOKEN_ID;
-    tok_init.use_approximate_greedy_tokenize_fn = false;
-    tok_init.tokenize_user_data = this;
-    tok_init.tokenize_fn = [](const void *user_data,
-                              const uint8_t *bytes,
-                              size_t bytes_len,
-                              uint32_t *output_tokens,
-                              size_t output_tokens_len) -> std::size_t {
-        searcher const *self = static_cast<searcher const *>(user_data);
-        return self->call_tokenize(bytes, bytes_len, output_tokens, output_tokens_len);
-    };
-    tok_init.tokenizer_json = tokenizer_json.c_str();
-
-    char error_buf[1024];
-    ll_tokenizer = llg_new_tokenizer(&tok_init, error_buf, sizeof(error_buf));
-    if (ll_tokenizer == nullptr) {
-        throw std::runtime_error(fmt::format("Error creating tokenizer: {}", error_buf));
-    }
-
-    fmt::println("Loaded ll_tokenizer. \"{}\" -> [{}]",
-                 sample_input,
-                 fmt::join(tokenize(ll_tokenizer, sample_input), ", "));
-    std::fflush(stdout);
-
-    auto vocab = tokenizer_data["model"]["vocab"];
-    for (auto const &[tok_str, tok_id] : vocab.items()) {
-        tid_to_token[tok_id.get<int>()] = to_bytes(tok_str);
-    }
-
     auto nchars_to_tid = std::unordered_map<int, std::vector<int>>{};
-    for (auto const &[tid, token] : tid_to_token) {
+    for (auto const &[tid, token] : tok.get_tid_to_token()) {
         if (tid < 2) { // FIXME: special token detection
             // special token; skip
             continue;
@@ -227,9 +181,9 @@ searcher::searcher(std::string const &tokenized_sentences_path,
         nchars_to_tid[length].push_back(tid);
     }
 
-    for (int n = 0; n <= MAX_TOKEN_LENGTH; ++n) {
-        auto bitmask = boost::dynamic_bitset<>(VOCAB_SIZE);
-        for (int gt_n = n + 1; gt_n <= MAX_TOKEN_LENGTH; ++gt_n) {
+    for (int n = 0; n <= tok.MAX_TOKEN_LENGTH; ++n) {
+        auto bitmask = boost::dynamic_bitset<>(tok.VOCAB_SIZE);
+        for (int gt_n = n + 1; gt_n <= tok.MAX_TOKEN_LENGTH; ++gt_n) {
             for (auto tid : nchars_to_tid.at(gt_n)) {
                 bitmask.set(tid);
             }
@@ -239,35 +193,6 @@ searcher::searcher(std::string const &tokenized_sentences_path,
 
     fmt::println("Done.");
     std::fflush(stdout);
-}
-
-searcher::~searcher()
-{
-    if (ll_tokenizer) {
-        llg_free_tokenizer(ll_tokenizer);
-    }
-}
-
-auto searcher::call_tokenize(const uint8_t *bytes,
-                             size_t bytes_len,
-                             uint32_t *output_tokens,
-                             size_t output_tokens_len) const -> std::size_t
-{
-    std::vector<std::int32_t> result;
-    try {
-        // handle incomplete utf8
-        auto encoded = to_unicode(std::string(bytes, bytes + bytes_len));
-        result = tokenizer->Encode(encoded);
-    } catch (...) {
-        fmt::println("Error thrown by tokenizer");
-        std::fflush(stdout);
-        std::terminate();
-    }
-
-    for (int i = 0; i < std::min(result.size(), output_tokens_len); ++i) {
-        output_tokens[i] = result[i];
-    }
-    return result.size();
 }
 
 namespace {
@@ -321,7 +246,7 @@ auto merge_sorted_lists(std::vector<pointer_or_object> const &cand_lists) -> std
     using queue_item = std::tuple<index_entry, int, int>;
     struct comparator
     {
-        bool operator()(queue_item const &l, queue_item const &r)
+        auto operator()(queue_item const &l, queue_item const &r) -> bool
         {
             return std::get<0>(r) < std::get<0>(l);
         }
@@ -390,7 +315,7 @@ auto searcher::generate_cands(LlgMatcher *matcher,
         throw std::runtime_error("Error computing mask");
     }
 
-    auto bitmask = to_bitset(llg_matcher_get_mask(matcher), VOCAB_SIZE);
+    auto bitmask = to_bitset(llg_matcher_get_mask(matcher), tok.VOCAB_SIZE);
 
     if (level == 0) {
         bitmask &= gt_n_char_masks.at(pad_size);
@@ -404,7 +329,7 @@ auto searcher::generate_cands(LlgMatcher *matcher,
     for (int token : next_tokens) {
         assert(token != EOS_TOKEN_ID);
 
-        auto cur_prefix = prev_prefix + tid_to_token.at(token);
+        auto cur_prefix = prev_prefix + tok.get_tid_to_token().at(token);
         if (level == 0) {
             auto it = cur_prefix.begin();
             for (int i = 0; i < pad_size; ++i) {
@@ -458,7 +383,7 @@ auto searcher::generate_cands(LlgMatcher *matcher,
 auto searcher::search(std::string const &search_term) const -> std::vector<int>
 {
     LlgConstraintInit init;
-    llg_constraint_init_set_defaults(&init, ll_tokenizer);
+    llg_constraint_init_set_defaults(&init, tok.get_ll_tokenizer());
 
     struct LlgMatcherDeleter
     {
@@ -470,7 +395,7 @@ auto searcher::search(std::string const &search_term) const -> std::vector<int>
     auto cand_lists = std::vector<pointer_or_object>{};
 
     std::unordered_map<std::string, candset> cache;
-    for (int pad_size = 0; pad_size < MAX_TOKEN_LENGTH; ++pad_size) {
+    for (int pad_size = 0; pad_size < tok.MAX_TOKEN_LENGTH; ++pad_size) {
         fmt::println("======= pad size = {} ========", pad_size);
 
         auto regex = fmt::format(".{{{}}}{}.*", pad_size, search_regex);
@@ -490,3 +415,5 @@ auto searcher::search(std::string const &search_term) const -> std::vector<int>
 
     return get_sent_ids(merge_sorted_lists(cand_lists));
 }
+
+} // namespace corpus_search

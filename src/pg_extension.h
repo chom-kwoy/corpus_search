@@ -6,6 +6,34 @@
 #include <access/amapi.h>
 #include <fmgr.h>
 
+typedef struct
+{
+    int32 vl_len_;      // varlena header
+    int tokenizer_path; // string option
+} ibpe_options_data;
+
+// opaque is a special area at the end of all index pages
+typedef struct
+{
+    uint16 flags;        // see #defines below
+    uint16 ibpe_page_id; // must equal IBPE_PAGE_ID, aligned at the end of the page
+} ibpe_opaque_data;
+
+#define IBPE_PAGE_META (1 << 0)
+#define IBPE_PAGE_DELETED (1 << 1)
+
+#define IBPE_PAGE_ID (0x1B9E)
+
+// data structure stored in the meta page (page #0 of the index relation)
+#define TOKENIZER_PATH_MAXLEN 255
+typedef struct
+{
+    uint32 magickNumber; // must equal IBPE_MAGICK_NUMBER
+    char tokenizer_path[TOKENIZER_PATH_MAXLEN + 1];
+} ibpe_metapage_data;
+
+#define IBPE_MAGICK_NUMBER (0xFEEDBEEF)
+
 /* build new index */
 IndexBuildResult *ibpe_build(Relation heapRelation,
                              Relation indexRelation,

@@ -1,5 +1,7 @@
 #include "pg_extension.h"
 
+#include "corpus_search.h"
+
 #include <string.h>
 
 #include <access/generic_xlog.h>
@@ -12,26 +14,9 @@
 
 PG_MODULE_MAGIC_EXT(.name = "ibpe", .version = PG_VERSION);
 
+// index options
 static relopt_kind ibpe_relopt_kind;
 static relopt_parse_elt ibpe_relopt_tab[1];
-
-typedef struct
-{
-    int32 vl_len_;      // varlena header
-    int tokenizer_path; // string option
-} ibpe_options_st;
-
-typedef struct
-{
-} ibpe_opaque_data;
-
-typedef struct
-{
-    uint32 magickNumber;
-    ibpe_options_st opts;
-} ibpe_metapage_data;
-
-#define IBPE_MAGICK_NUMBER (0xFEEDBEEF)
 
 void _PG_init(void)
 {
@@ -43,12 +28,12 @@ void _PG_init(void)
     add_string_reloption(ibpe_relopt_kind,
                          "tokenizer_path",
                          "Path to tokenizer.json",
-                         "NONE", // default value
+                         "", // default value
                          NULL,
                          AccessExclusiveLock);
     ibpe_relopt_tab[0].optname = "tokenizer_path";
     ibpe_relopt_tab[0].opttype = RELOPT_TYPE_STRING;
-    ibpe_relopt_tab[0].offset = offsetof(ibpe_options_st, tokenizer_path);
+    ibpe_relopt_tab[0].offset = offsetof(ibpe_options_data, tokenizer_path);
 }
 
 PG_FUNCTION_INFO_V1(ibpe_handler);
@@ -57,13 +42,16 @@ Datum ibpe_handler(PG_FUNCTION_ARGS)
     IndexAmRoutine *amroutine = makeNode(IndexAmRoutine);
 
     // Total number of strategies (operators) by which we can traverse/search this AM.
+    // We support only one strategy: ~ (regex match operator).
     amroutine->amstrategies = 1;
 
-    // total number of support functions that this AM uses
-    amroutine->amsupport = 0; // FIXME?
+    // Total number of support functions that this AM uses
+    // We don't need any support functions.
+    amroutine->amsupport = 0;
 
     // opclass options support function number or 0
-    amroutine->amoptsprocnum = 0; // FIXME?
+    // We don't have an options support function.
+    amroutine->amoptsprocnum = 0;
 
     amroutine->amcanorder = false;
     amroutine->amcanorderbyop = false;
@@ -117,32 +105,28 @@ Datum ibpe_handler(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(amroutine);
 }
 
-static ibpe_options_st *make_default_ibpe_options(void)
-{
-    ibpe_options_st *opts = (ibpe_options_st *) palloc0(sizeof(ibpe_options_st));
-
-    // TODO: set default tokenizer_path
-
-    SET_VARSIZE(opts, sizeof(ibpe_options_st));
-    return opts;
-}
-
 static void ibpe_fill_metapage(Relation indexRelation, Page metaPage)
 {
-    ibpe_options_st *opts = (ibpe_options_st *) indexRelation->rd_options;
+    ibpe_options_data *opts = (ibpe_options_data *) indexRelation->rd_options;
     if (!opts) {
-        opts = make_default_ibpe_options();
+        elog(ERROR,
+             "tokenizer path not set. "
+             "Please specify `WITH (tokenizer_path = '<path to tokenizer.json>').`");
     }
+
+    char const *tok_path = GET_STRING_RELOPTION(opts, tokenizer_path);
+    elog(NOTICE, "Got tokenizer path = %s", tok_path);
 
     PageInit(metaPage, BLCKSZ, sizeof(ibpe_opaque_data));
 
     ibpe_opaque_data *opaque = (ibpe_opaque_data *) PageGetSpecialPointer(metaPage);
-    // TODO: set things in opaque
+    opaque->flags = IBPE_PAGE_META;
+    opaque->ibpe_page_id = IBPE_PAGE_ID;
 
     ibpe_metapage_data *metadata = (ibpe_metapage_data *) PageGetContents(metaPage);
     memset(metadata, 0, sizeof(ibpe_metapage_data));
     metadata->magickNumber = IBPE_MAGICK_NUMBER;
-    metadata->opts = *opts;
+    strncpy(metadata->tokenizer_path, tok_path, TOKENIZER_PATH_MAXLEN);
 
     ((PageHeader) metaPage)->pd_lower += sizeof(ibpe_metapage_data);
     Assert(((PageHeader) metaPage)->pd_lower <= ((PageHeader) metaPage)->pd_upper);
@@ -157,7 +141,7 @@ static void ibpe_init_metapage(Relation indexRelation, ForkNumber forknum)
 	 */
     Buffer metaBuffer = ReadBufferExtended(indexRelation, forknum, P_NEW, RBM_NORMAL, NULL);
     LockBuffer(metaBuffer, BUFFER_LOCK_EXCLUSIVE);
-    Assert(BufferGetBlockNumber(metaBuffer) == 0);
+    Assert(BufferGetBlockNumber(metaBuffer) == 0 /* meta page */);
 
     /* Initialize contents of meta page */
     GenericXLogState *state = GenericXLogStart(indexRelation);
@@ -172,6 +156,67 @@ static void ibpe_init_metapage(Relation indexRelation, ForkNumber forknum)
 
 typedef struct
 {
+    tokenizer tok;
+} ibpe_state;
+
+static void ibpe_cache_state(Relation indexRelation, ibpe_state *cur_state)
+{
+    ibpe_state *state_mem;
+    if (!indexRelation->rd_amcache) {
+        // allocate memory for amcache
+        state_mem = MemoryContextAlloc(indexRelation->rd_indexcxt, sizeof(ibpe_state));
+        indexRelation->rd_amcache = state_mem;
+    } else {
+        state_mem = indexRelation->rd_amcache;
+    }
+
+    // store current state into rd_amcache
+    *state_mem = *cur_state;
+}
+
+static ibpe_state ibpe_restore_state(Relation indexRelation)
+{
+    ibpe_state *state_mem;
+    if (!indexRelation->rd_amcache) {
+        // allocate memory for amcache
+        state_mem = MemoryContextAlloc(indexRelation->rd_indexcxt, sizeof(ibpe_state));
+
+        // restore state from metapage
+        Buffer buffer = ReadBuffer(indexRelation, 0 /* meta page */);
+        LockBuffer(buffer, BUFFER_LOCK_SHARE);
+
+        Page page = BufferGetPage(buffer);
+
+        if (((ibpe_opaque_data *) PageGetSpecialPointer(page))->ibpe_page_id != IBPE_PAGE_ID) {
+            elog(ERROR, "Relation is not an ibpe index: page id does not match.");
+        }
+
+        ibpe_metapage_data *meta = (ibpe_metapage_data *) PageGetContents(page);
+        if (meta->magickNumber != IBPE_MAGICK_NUMBER) {
+            elog(ERROR, "Relation is not an ibpe index: invalid magick number.");
+        }
+
+        UnlockReleaseBuffer(buffer);
+
+        // initialize tokenizer
+        elog(NOTICE, "Loading tokenizer from '%s'", meta->tokenizer_path);
+        char errmsg[256] = {};
+        state_mem->tok = create_tokenizer(meta->tokenizer_path, errmsg, 256);
+        if (!state_mem->tok) {
+            elog(ERROR, "Cannot load tokenizer: %s", errmsg);
+        }
+
+        indexRelation->rd_amcache = state_mem;
+    } else {
+        state_mem = indexRelation->rd_amcache;
+    }
+    return *state_mem;
+}
+
+typedef struct
+{
+    index_builder builder;
+    tokenizer tok;
     int64 indtuples; /* total number of tuples indexed */
 } ibpe_build_state;
 
@@ -187,14 +232,36 @@ static void ibpe_build_callback(Relation indexRelation,
 {
     ibpe_build_state *build_state = (ibpe_build_state *) state;
 
+    if (isnull[0]) {
+        return; // skip NULLs
+    }
+
     char *string = TextDatumGetCString(values[0]);
-    elog(NOTICE,
-         "tid=%d/%d/%d, text=%s",
-         tid->ip_blkid.bi_hi,
-         tid->ip_blkid.bi_lo,
-         tid->ip_posid,
-         string);
-    // TODO
+
+    int tokens[2048] = {};
+    int n_tokens = tokenizer_tokenize(build_state->tok, string, tokens, lengthof(tokens));
+    if (n_tokens > lengthof(tokens)) {
+        elog(ERROR, "String exceeds %zu tokens", lengthof(tokens));
+    }
+
+    if (build_state->indtuples < 5) {
+        elog(NOTICE,
+             "tid=%d/%d/%d, text=%s, isnull=%d, toks=[%d, %d, %d, ...]",
+             tid->ip_blkid.bi_hi,
+             tid->ip_blkid.bi_lo,
+             tid->ip_posid,
+             string,
+             isnull[0],
+             tokens[0],
+             tokens[1],
+             tokens[2]);
+    }
+
+    // int sent_id = /* TODO */;
+
+    // index_builder_add_sentence(build_state->builder, sent_id, );
+
+    build_state->indtuples++;
 }
 
 /* build new index */
@@ -209,10 +276,15 @@ IndexBuildResult *ibpe_build(Relation heapRelation,
 
     ibpe_init_metapage(indexRelation, MAIN_FORKNUM);
 
-    ibpe_build_state build_state;
-    int ncols = indexRelation->rd_att->natts;
+    ibpe_state cur_state = ibpe_restore_state(indexRelation);
 
-    elog(NOTICE, "ncols = %d", ncols);
+    ibpe_build_state build_state;
+    build_state.builder = create_index_builder();
+    if (!build_state.builder) {
+        elog(ERROR, "Cannot allocate index builder");
+    }
+    build_state.tok = cur_state.tok;
+    build_state.indtuples = 0;
 
     // scan the heap (table to be indexed)
     double reltuples = table_index_build_scan(heapRelation,
@@ -223,6 +295,11 @@ IndexBuildResult *ibpe_build(Relation heapRelation,
                                               ibpe_build_callback,
                                               &build_state,
                                               NULL);
+
+    // TODO: populate index using result from builder
+
+    destroy_index_builder(build_state.builder);
+    destroy_tokenizer(build_state.tok);
 
     IndexBuildResult *result = (IndexBuildResult *) palloc(sizeof(IndexBuildResult));
     result->heap_tuples = reltuples;
@@ -281,12 +358,28 @@ void ibpe_costestimate(struct PlannerInfo *root,
 /* parse index reloptions */
 bytea *ibpe_options(Datum reloptions, bool validate)
 {
-    ibpe_options_st *rdopts = build_reloptions(reloptions,
-                                               validate,
-                                               ibpe_relopt_kind,
-                                               sizeof(ibpe_options_st),
-                                               ibpe_relopt_tab,
-                                               lengthof(ibpe_relopt_tab));
+    elog(NOTICE, "ibpe_options called with validate = %d", validate);
+    ibpe_options_data *rdopts = build_reloptions(reloptions,
+                                                 validate,
+                                                 ibpe_relopt_kind,
+                                                 sizeof(ibpe_options_data),
+                                                 ibpe_relopt_tab,
+                                                 lengthof(ibpe_relopt_tab));
+
+    char const *tok_path = GET_STRING_RELOPTION(rdopts, tokenizer_path);
+    elog(NOTICE, "Tokenizer path = %s", tok_path);
+
+    if (validate) {
+        if (strcmp(tok_path, "") == 0) {
+            elog(ERROR,
+                 "tokenizer path not set. "
+                 "Please specify `WITH (tokenizer_path = '<path to tokenizer.json>').`");
+        }
+        if (strlen(tok_path) > TOKENIZER_PATH_MAXLEN) {
+            elog(ERROR, "Tokenizer path too long");
+        }
+    }
+
     return (bytea *) rdopts;
 }
 

@@ -1,15 +1,104 @@
-#include "utils.h"
+#include "utils.hpp"
 
-#include "searcher.h"
+#include <filesystem>
+#include <fstream>
+#include <sstream>
+#include <unordered_map>
 
 #include <fmt/core.h>
+#include <fmt/ranges.h>
+#include <llguidance.h>
+#include <nlohmann/json.hpp>
+#include <tokenizers_cpp.h>
 #include <utf8.h>
 
-auto tokenize(LlgTokenizer *tokenizer, std::string const &string) -> std::vector<std::uint32_t>
+namespace corpus_search {
+
+static auto call_tokenize(const void *user_data,
+                          const uint8_t *bytes,
+                          size_t bytes_len,
+                          uint32_t *output_tokens,
+                          size_t output_tokens_len) noexcept -> std::size_t
+{
+    auto t = static_cast<tokenizer const *>(user_data);
+
+    // handle incomplete utf8
+    auto encoded = to_unicode(std::string(bytes, bytes + bytes_len));
+    auto result = t->get_tok_tokenizer()->Encode(encoded);
+
+    for (int i = 0; i < std::min(result.size(), output_tokens_len); ++i) {
+        output_tokens[i] = result[i];
+    }
+
+    return result.size();
+}
+
+tokenizer::tokenizer(std::string tokenizer_json_path, bool verbose)
+{
+    if (!std::filesystem::exists(std::filesystem::path(tokenizer_json_path))) {
+        throw std::runtime_error(
+            fmt::format("Tokenizer file does not exist at {}", tokenizer_json_path));
+    }
+
+    auto file = std::ifstream(tokenizer_json_path);
+    if (!file.is_open()) {
+        throw std::runtime_error(
+            fmt::format("Error opening tokenizer file: {}", tokenizer_json_path));
+    }
+    std::string tokenizer_json = (std::stringstream{} << file.rdbuf()).str();
+
+    // Load HF Tokenizers tokenizer
+    auto tokenizer_data = nlohmann::json::parse(tokenizer_json);
+
+    auto vocab = tokenizer_data["model"]["vocab"];
+    for (auto const &[tok_str, tok_id] : vocab.items()) {
+        tid_to_token[tok_id.get<int>()] = to_bytes(tok_str);
+    }
+
+    tokenizer_data["pre_tokenizer"] = nullptr;
+    tok_tokenizer = tokenizers::Tokenizer::FromBlobJSON(tokenizer_data.dump());
+
+    const char sample_input[] = "kaxnanxho ngixta 國家";
+    if (verbose) {
+        fmt::println("Loaded hf tokenizer. \"{}\" -> [{}]",
+                     sample_input,
+                     fmt::join(tokenize(sample_input), ", "));
+    }
+
+    // Load LLG tokenizer
+    LlgTokenizerInit tok_init = {};
+
+    tok_init.tok_eos = EOS_TOKEN_ID;
+    tok_init.use_approximate_greedy_tokenize_fn = false;
+    tok_init.tokenize_user_data = this;
+    tok_init.tokenize_fn = call_tokenize;
+    tok_init.tokenizer_json = tokenizer_json.c_str();
+
+    char error_buf[1024];
+    ll_tokenizer = llg_new_tokenizer(&tok_init, error_buf, sizeof(error_buf));
+    if (ll_tokenizer == nullptr) {
+        throw std::runtime_error(fmt::format("Error creating tokenizer: {}", error_buf));
+    }
+
+    if (verbose) {
+        fmt::println("Loaded llg tokenizer. \"{}\" -> [{}]",
+                     sample_input,
+                     fmt::join(llg_tokenize(sample_input), ", "));
+    }
+}
+
+tokenizer::~tokenizer()
+{
+    if (ll_tokenizer) {
+        llg_free_tokenizer(ll_tokenizer);
+    }
+}
+
+auto tokenizer::llg_tokenize(std::string_view string) const -> std::vector<uint32_t>
 {
     auto sample_input_bytes = std::vector<std::uint8_t>(std::begin(string), std::end(string));
     auto tokens = std::vector<std::uint32_t>(1024);
-    auto num_tokens = llg_tokenize_bytes(tokenizer,
+    auto num_tokens = llg_tokenize_bytes(ll_tokenizer,
                                          sample_input_bytes.data(),
                                          sample_input_bytes.size(),
                                          tokens.data(),
@@ -18,29 +107,12 @@ auto tokenize(LlgTokenizer *tokenizer, std::string const &string) -> std::vector
     return tokens;
 }
 
-auto make_index(std::unordered_map<int, std::vector<int>> sentences)
-    -> std::unordered_map<int, std::vector<index_entry>>
+auto tokenizer::tokenize(std::string_view string) const -> std::vector<int>
 {
-    auto map = std::unordered_map<int, std::vector<index_entry>>{};
-    for (auto const &[sent_id, sentence] : sentences) {
-        int pos = 0;
-        for (int token : sentence) {
-            map[token].push_back({
-                static_cast<unsigned int>(sent_id),
-                static_cast<unsigned int>(pos),
-            });
-            pos += 1;
-        }
-    }
-    auto result = std::unordered_map<int, std::vector<index_entry>>{};
-    for (auto &&[tok_id, entries] : map) {
-        std::sort(entries.begin(), entries.end());
-        result[tok_id] = std::move(entries);
-    }
-    return result;
+    return tok_tokenizer->Encode(to_unicode(string));
 }
 
-auto to_bytes(std::string s) -> std::string
+auto to_bytes(std::string_view s) -> std::string
 {
     static const std::unordered_map<int, int> UNICODE_TO_BYTES = {
         {0x100, 0},   {0x101, 1},   {0x102, 2},   {0x103, 3},   {0x104, 4},   {0x105, 5},
@@ -87,17 +159,17 @@ auto to_bytes(std::string s) -> std::string
         {0x0f6, 246}, {0x0f7, 247}, {0x0f8, 248}, {0x0f9, 249}, {0x0fa, 250}, {0x0fb, 251},
         {0x0fc, 252}, {0x0fd, 253}, {0x0fe, 254}, {0x0ff, 255},
     };
-    std::vector<int> result;
+    std::string result;
     for (auto it = utf8::iterator(s.begin(), s.begin(), s.end());
          it != utf8::iterator(s.end(), s.begin(), s.end());
          ++it) {
         int code_point = *it;
         result.push_back(UNICODE_TO_BYTES.at(code_point));
     }
-    return std::string(result.begin(), result.end());
+    return result;
 }
 
-auto to_unicode(std::string s) -> std::string
+auto to_unicode(std::string_view s) -> std::string
 {
     static const std::unordered_map<int, int> BYTES_TO_UNICODE = {
         {0, 0x100},   {1, 0x101},   {2, 0x102},   {3, 0x103},   {4, 0x104},   {5, 0x105},
@@ -150,3 +222,5 @@ auto to_unicode(std::string s) -> std::string
     }
     return utf8::utf32to8(result);
 }
+
+} // namespace corpus_search

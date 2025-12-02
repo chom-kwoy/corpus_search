@@ -10,17 +10,19 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED OFF)
 set(CMAKE_C_EXTENSIONS ON)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 add_library(lib_corpus_search
     src/utils.cpp
-    src/utils.h
+    src/utils.hpp
     src/searcher.cpp
-    src/searcher.h
+    src/searcher.hpp
+    src/index_builder.hpp src/index_builder.cpp
 )
+set_property(TARGET lib_corpus_search PROPERTY POSITION_INDEPENDENT_CODE ON)
 
 ########### Link External libraries ###########
 # fmt
@@ -38,6 +40,7 @@ target_link_libraries(lib_corpus_search PRIVATE fmt::fmt)
 # nlohmann json
 FetchContent_Declare(json URL https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz)
 FetchContent_MakeAvailable(json)
+set_property(TARGET nlohmann_json PROPERTY POSITION_INDEPENDENT_CODE ON)
 
 target_link_libraries(lib_corpus_search PRIVATE nlohmann_json::nlohmann_json)
 
@@ -97,10 +100,12 @@ if ((pg_includedir_obtained EQUAL 0) AND (EXISTS "${pg_includedir}"))
     add_library(ibpe SHARED
         src/pg_extension.c
         src/pg_extension.h
+        src/corpus_search.h
+        src/corpus_search.cpp
     )
 
     target_compile_definitions(ibpe PRIVATE USE_ASSERT_CHECKING)
-    target_link_libraries(ibpe PRIVATE lib_corpus_search)
+    target_link_libraries(ibpe PRIVATE lib_corpus_search fmt::fmt)
     target_include_directories(ibpe PRIVATE ${pg_includedir})
 
     set_target_properties(ibpe PROPERTIES PREFIX "")

@@ -4,12 +4,13 @@
 #include <chrono>
 #include <fmt/chrono.h>
 
-#include "searcher.h"
+#include "searcher.hpp"
 
-auto s = searcher("/home/park/PycharmProjects/mk-tokenizer/tokenized_sentences.msgpack",
-                  "/home/park/PycharmProjects/mk-tokenizer/bpe_tokenizer/tokenizer.json");
+auto s = corpus_search::searcher(
+    "/home/park/PycharmProjects/mk-tokenizer/tokenized_sentences.msgpack",
+    "/home/park/PycharmProjects/mk-tokenizer/bpe_tokenizer/tokenizer.json");
 
-auto measure_time(searcher const &s, std::string search_term) -> std::vector<int>
+auto measure_time(corpus_search::searcher const &s, std::string search_term) -> std::vector<int>
 {
     using namespace std::chrono;
     auto start_time = high_resolution_clock::now();
