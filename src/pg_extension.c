@@ -8,6 +8,7 @@
 #include <access/reloptions.h>
 #include <access/tableam.h>
 #include <commands/vacuum.h>
+#include <nodes/execnodes.h>
 #include <storage/bufmgr.h>
 #include <utils/builtins.h>
 #include <utils/rel.h>
@@ -157,14 +158,14 @@ static void ibpe_init_metapage(Relation indexRelation, ForkNumber forknum)
 typedef struct
 {
     tokenizer tok;
-} ibpe_state;
+} ibpe_relcache;
 
-static void ibpe_cache_state(Relation indexRelation, ibpe_state *cur_state)
+static void ibpe_store_cache(Relation indexRelation, ibpe_relcache *cur_state)
 {
-    ibpe_state *state_mem;
+    ibpe_relcache *state_mem;
     if (!indexRelation->rd_amcache) {
         // allocate memory for amcache
-        state_mem = MemoryContextAlloc(indexRelation->rd_indexcxt, sizeof(ibpe_state));
+        state_mem = MemoryContextAlloc(indexRelation->rd_indexcxt, sizeof(ibpe_relcache));
         indexRelation->rd_amcache = state_mem;
     } else {
         state_mem = indexRelation->rd_amcache;
@@ -174,12 +175,21 @@ static void ibpe_cache_state(Relation indexRelation, ibpe_state *cur_state)
     *state_mem = *cur_state;
 }
 
-static ibpe_state ibpe_restore_state(Relation indexRelation)
+static void ibpe_free_relcache(void *arg)
 {
-    ibpe_state *state_mem;
+    elog(NOTICE, "freeing rd_amcache");
+
+    ibpe_relcache *state_mem = arg;
+
+    destroy_tokenizer(state_mem->tok);
+}
+
+static ibpe_relcache ibpe_restore_or_create_cache(Relation indexRelation)
+{
+    ibpe_relcache *state_mem;
     if (!indexRelation->rd_amcache) {
         // allocate memory for amcache
-        state_mem = MemoryContextAlloc(indexRelation->rd_indexcxt, sizeof(ibpe_state));
+        state_mem = MemoryContextAlloc(indexRelation->rd_indexcxt, sizeof(ibpe_relcache));
 
         // restore state from metapage
         Buffer buffer = ReadBuffer(indexRelation, 0 /* meta page */);
@@ -206,6 +216,13 @@ static ibpe_state ibpe_restore_state(Relation indexRelation)
             elog(ERROR, "Cannot load tokenizer: %s", errmsg);
         }
 
+        // free tokenizer before cache is freed
+        MemoryContextCallback *cb = MemoryContextAlloc(indexRelation->rd_indexcxt,
+                                                       sizeof(MemoryContextCallback));
+        cb->func = ibpe_free_relcache;
+        cb->arg = state_mem;
+        MemoryContextRegisterResetCallback(indexRelation->rd_indexcxt, cb);
+
         indexRelation->rd_amcache = state_mem;
     } else {
         state_mem = indexRelation->rd_amcache;
@@ -217,6 +234,7 @@ typedef struct
 {
     index_builder builder;
     tokenizer tok;
+
     int64 indtuples; /* total number of tuples indexed */
 } ibpe_build_state;
 
@@ -265,9 +283,7 @@ static void ibpe_build_callback(Relation indexRelation,
 }
 
 /* build new index */
-IndexBuildResult *ibpe_build(Relation heapRelation,
-                             Relation indexRelation,
-                             struct IndexInfo *indexInfo)
+IndexBuildResult *ibpe_build(Relation heapRelation, Relation indexRelation, IndexInfo *indexInfo)
 {
     elog(NOTICE, "ibpe_build called");
 
@@ -276,7 +292,7 @@ IndexBuildResult *ibpe_build(Relation heapRelation,
 
     ibpe_init_metapage(indexRelation, MAIN_FORKNUM);
 
-    ibpe_state cur_state = ibpe_restore_state(indexRelation);
+    ibpe_relcache cur_state = ibpe_restore_or_create_cache(indexRelation);
 
     ibpe_build_state build_state;
     build_state.builder = create_index_builder();
@@ -299,7 +315,6 @@ IndexBuildResult *ibpe_build(Relation heapRelation,
     // TODO: populate index using result from builder
 
     destroy_index_builder(build_state.builder);
-    destroy_tokenizer(build_state.tok);
 
     IndexBuildResult *result = (IndexBuildResult *) palloc(sizeof(IndexBuildResult));
     result->heap_tuples = reltuples;
@@ -322,7 +337,7 @@ bool ibpe_insert(Relation indexRelation,
                  Relation heapRelation,
                  IndexUniqueCheck checkUnique,
                  bool indexUnchanged,
-                 struct IndexInfo *indexInfo)
+                 IndexInfo *indexInfo)
 {
     // TODO
 }
