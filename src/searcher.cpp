@@ -39,8 +39,7 @@ auto load_file(std::string const &path) -> std::unordered_map<int, std::vector<i
     auto file = std::ifstream(path, std::ios::binary);
 
     if (!file) {
-        fmt::print(stderr, "error opening file.\n");
-        return {};
+        throw std::runtime_error("Error reading file.");
     }
 
     auto unpacker = msgpack::unpacker();

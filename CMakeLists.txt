@@ -73,10 +73,10 @@ target_include_directories(utf8cpp INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/utf8cp
 
 target_link_libraries(lib_corpus_search PRIVATE utf8cpp)
 
-## msgpack-cxx (included by tokenizers-cpp)
-# find_package(msgpack-cxx REQUIRED)
-# target_link_libraries(lib_corpus_search PUBLIC msgpack-cxx)
-#
+# msgpack-cxx (included by tokenizers-cpp)
+find_package(msgpack-cxx REQUIRED)
+target_link_libraries(lib_corpus_search PUBLIC msgpack-cxx)
+
 ## roaring bitmap
 # CPMAddPackage(
 #   NAME roaring
