@@ -136,10 +136,10 @@ static void ibpe_fill_metapage(Relation indexRelation, Page metaPage)
 static void ibpe_init_metapage(Relation indexRelation, ForkNumber forknum)
 {
     /*
-	 * Make a new page; since it is first page it should be associated with
-	 * block number 0.  No need to hold the extension
-	 * lock because there cannot be concurrent inserters yet.
-	 */
+     * Make a new page; since it is first page it should be associated with
+     * block number 0.  No need to hold the extension
+     * lock because there cannot be concurrent inserters yet.
+     */
     Buffer metaBuffer = ReadBufferExtended(indexRelation, forknum, P_NEW, RBM_NORMAL, NULL);
     LockBuffer(metaBuffer, BUFFER_LOCK_EXCLUSIVE);
     Assert(BufferGetBlockNumber(metaBuffer) == 0 /* meta page */);
@@ -275,11 +275,21 @@ static void ibpe_build_callback(Relation indexRelation,
              tokens[2]);
     }
 
-    // int sent_id = /* TODO */;
+    int sent_id = tid->ip_posid/* TODO */;
 
-    // index_builder_add_sentence(build_state->builder, sent_id, );
+    index_builder_add_sentence(build_state->builder, sent_id, tokens, n_tokens);
 
     build_state->indtuples++;
+}
+
+static void ibpe_index_builder_iterate(void *user_data,
+                                       int token,
+                                       struct index_entry const *p_sentids,
+                                       int n_sentids)
+{
+    ibpe_build_state* state = user_data;
+
+    // TODO
 }
 
 /* build new index */
@@ -312,7 +322,10 @@ IndexBuildResult *ibpe_build(Relation heapRelation, Relation indexRelation, Inde
                                               &build_state,
                                               NULL);
 
-    // TODO: populate index using result from builder
+    // Populate index using result from builder
+    index_builder_finalize(build_state.builder);
+
+    index_builder_iterate(build_state.builder, ibpe_index_builder_iterate, &build_state);
 
     destroy_index_builder(build_state.builder);
 
