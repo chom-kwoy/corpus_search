@@ -1,5 +1,6 @@
 #include "ibpe_utils.h"
 #include "ibpe_build.h"
+#include "ibpe_scan.h"
 
 #include <string.h>
 
@@ -14,28 +15,6 @@
 #include <utils/rel.h>
 
 PG_MODULE_MAGIC_EXT(.name = "ibpe", .version = PG_VERSION);
-
-// index options
-static relopt_kind ibpe_relopt_kind;
-static relopt_parse_elt ibpe_relopt_tab[1];
-
-void _PG_init(void)
-{
-    elog(NOTICE, "_PG_init called");
-
-    ibpe_relopt_kind = add_reloption_kind();
-
-    // path to tokenizer
-    add_string_reloption(ibpe_relopt_kind,
-                         "tokenizer_path",
-                         "Path to tokenizer.json",
-                         "", // default value
-                         NULL,
-                         AccessExclusiveLock);
-    ibpe_relopt_tab[0].optname = "tokenizer_path";
-    ibpe_relopt_tab[0].opttype = RELOPT_TYPE_STRING;
-    ibpe_relopt_tab[0].offset = offsetof(ibpe_options_data, tokenizer_path);
-}
 
 PG_FUNCTION_INFO_V1(ibpe_handler);
 Datum ibpe_handler(PG_FUNCTION_ARGS)
@@ -106,6 +85,7 @@ Datum ibpe_handler(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(amroutine);
 }
 
+// page related utils
 ibpe_opaque_data *ibpe_get_opaque(Page page)
 {
     return (ibpe_opaque_data *) PageGetSpecialPointer(page);
@@ -123,6 +103,56 @@ int ibpe_page_get_free_space(Page page)
     space -= ibpe_get_opaque(page)->data_len;
     space -= MAXALIGN(sizeof(ibpe_opaque_data));
     return space;
+}
+
+// index options
+static relopt_kind ibpe_relopt_kind;
+static relopt_parse_elt ibpe_relopt_tab[1];
+
+void _PG_init(void)
+{
+    elog(NOTICE, "_PG_init called");
+
+    ibpe_relopt_kind = add_reloption_kind();
+
+    // path to tokenizer
+    add_string_reloption(ibpe_relopt_kind,
+                         "tokenizer_path",
+                         "Path to tokenizer.json",
+                         "", // default value
+                         NULL,
+                         AccessExclusiveLock);
+    ibpe_relopt_tab[0].optname = "tokenizer_path";
+    ibpe_relopt_tab[0].opttype = RELOPT_TYPE_STRING;
+    ibpe_relopt_tab[0].offset = offsetof(ibpe_options_data, tokenizer_path);
+}
+
+/* parse index reloptions */
+bytea *ibpe_options(Datum reloptions, bool validate)
+{
+    elog(NOTICE, "ibpe_options called with validate = %d", validate);
+    ibpe_options_data *rdopts = build_reloptions(reloptions,
+                                                 validate,
+                                                 ibpe_relopt_kind,
+                                                 sizeof(ibpe_options_data),
+                                                 ibpe_relopt_tab,
+                                                 lengthof(ibpe_relopt_tab));
+
+    char const *tok_path = GET_STRING_RELOPTION(rdopts, tokenizer_path);
+    elog(NOTICE, "Tokenizer path = %s", tok_path);
+
+    if (validate) {
+        if (strcmp(tok_path, "") == 0) {
+            elog(ERROR,
+                 "tokenizer path not set. "
+                 "Please specify `WITH (tokenizer_path = '<path to tokenizer.json>').`");
+        }
+        if (strlen(tok_path) > TOKENIZER_PATH_MAXLEN) {
+            elog(ERROR, "Tokenizer path too long");
+        }
+    }
+
+    return (bytea *) rdopts;
 }
 
 /* bulk delete */
@@ -156,65 +186,9 @@ void ibpe_costestimate(struct PlannerInfo *root,
     elog(ERROR, "ibpe_costestimate: Not implemented");
 }
 
-/* parse index reloptions */
-bytea *ibpe_options(Datum reloptions, bool validate)
-{
-    elog(NOTICE, "ibpe_options called with validate = %d", validate);
-    ibpe_options_data *rdopts = build_reloptions(reloptions,
-                                                 validate,
-                                                 ibpe_relopt_kind,
-                                                 sizeof(ibpe_options_data),
-                                                 ibpe_relopt_tab,
-                                                 lengthof(ibpe_relopt_tab));
-
-    char const *tok_path = GET_STRING_RELOPTION(rdopts, tokenizer_path);
-    elog(NOTICE, "Tokenizer path = %s", tok_path);
-
-    if (validate) {
-        if (strcmp(tok_path, "") == 0) {
-            elog(ERROR,
-                 "tokenizer path not set. "
-                 "Please specify `WITH (tokenizer_path = '<path to tokenizer.json>').`");
-        }
-        if (strlen(tok_path) > TOKENIZER_PATH_MAXLEN) {
-            elog(ERROR, "Tokenizer path too long");
-        }
-    }
-
-    return (bytea *) rdopts;
-}
-
 /* validate definition of an opclass for this AM */
 bool ibpe_validate(Oid opclassoid)
 {
     // TODO
     elog(ERROR, "ibpe_validate: Not implemented");
-}
-
-/* prepare for index scan */
-IndexScanDesc ibpe_beginscan(Relation indexRelation, int nkeys, int norderbys)
-{
-    // TODO
-    elog(ERROR, "ibpe_beginscan: Not implemented");
-}
-
-/* (re)start index scan */
-void ibpe_rescan(IndexScanDesc scan, ScanKey keys, int nkeys, ScanKey orderbys, int norderbys)
-{
-    // TODO
-    elog(ERROR, "ibpe_rescan: Not implemented");
-}
-
-/* fetch all valid tuples */
-int64 ibpe_getbitmap(IndexScanDesc scan, TIDBitmap *tbm)
-{
-    // TODO
-    elog(ERROR, "ibpe_getbitmap: Not implemented");
-}
-
-/* end index scan */
-void ibpe_endscan(IndexScanDesc scan)
-{
-    // TODO
-    elog(ERROR, "ibpe_endscan: Not implemented");
 }

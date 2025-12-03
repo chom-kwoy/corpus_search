@@ -30,12 +30,15 @@ static void ibpe_fill_metapage(Relation indexRelation, Page metaPage)
 
     ibpe_opaque_data *opaque = ibpe_get_opaque(metaPage);
     opaque->flags = IBPE_PAGE_META;
+    opaque->data_len = sizeof(ibpe_metapage_data);
+    opaque->next_blkno = InvalidBlockNumber;
     opaque->ibpe_page_id = IBPE_PAGE_ID;
 
     ibpe_metapage_data *metadata = (ibpe_metapage_data *) PageGetContents(metaPage);
     memset(metadata, 0, sizeof(ibpe_metapage_data));
     metadata->magickNumber = IBPE_MAGICK_NUMBER;
     strncpy(metadata->tokenizer_path, tok_path, TOKENIZER_PATH_MAXLEN);
+    metadata->index_built = false;
 
     ((PageHeader) metaPage)->pd_lower += sizeof(ibpe_metapage_data);
     Assert(((PageHeader) metaPage)->pd_lower <= ((PageHeader) metaPage)->pd_upper);
@@ -433,6 +436,20 @@ IndexBuildResult *ibpe_build(Relation heapRelation, Relation indexRelation, Inde
     // free memory
     destroy_index_builder(build_state.builder);
 
+    // Update metapage
+    Buffer buffer = ReadBuffer(indexRelation, 0 /* metapage */);
+    LockBuffer(buffer, BUFFER_LOCK_EXCLUSIVE);
+
+    GenericXLogState *state = GenericXLogStart(indexRelation);
+    Page metaPage = GenericXLogRegisterBuffer(state, buffer, GENERIC_XLOG_FULL_IMAGE);
+
+    ibpe_metapage_data *metadata = (ibpe_metapage_data *) PageGetContents(metaPage);
+    metadata->index_built = true;
+
+    GenericXLogFinish(state);
+    UnlockReleaseBuffer(buffer);
+
+    // return results
     IndexBuildResult *result = (IndexBuildResult *) palloc(sizeof(IndexBuildResult));
     result->heap_tuples = reltuples;
     result->index_tuples = build_state.indtuples;

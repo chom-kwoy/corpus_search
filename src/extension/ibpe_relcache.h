@@ -16,8 +16,6 @@ typedef struct
 
 void ibpe_store_cache(Relation indexRelation, ibpe_relcache *cur_state);
 
-void ibpe_free_relcache(void *arg);
-
 ibpe_relcache ibpe_restore_or_create_cache(Relation indexRelation);
 
 #endif // IBPE_RELCACHE_H

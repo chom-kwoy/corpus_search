@@ -35,6 +35,7 @@ typedef struct
 {
     uint32 magickNumber; // must equal IBPE_MAGICK_NUMBER
     char tokenizer_path[TOKENIZER_PATH_MAXLEN + 1];
+    bool index_built;
 } ibpe_metapage_data;
 
 #define IBPE_MAGICK_NUMBER (0xFEEDBEEF)
@@ -47,6 +48,9 @@ bool ibpe_is_page_deleted(Page page);
 int ibpe_page_get_free_space(Page page);
 
 // Callback routines
+
+/* parse index reloptions */
+bytea *ibpe_options(Datum reloptions, bool validate);
 
 /* bulk delete */
 IndexBulkDeleteResult *ibpe_bulkdelete(IndexVacuumInfo *info,
@@ -67,22 +71,7 @@ void ibpe_costestimate(struct PlannerInfo *root,
                        double *indexCorrelation,
                        double *indexPages);
 
-/* parse index reloptions */
-bytea *ibpe_options(Datum reloptions, bool validate);
-
 /* validate definition of an opclass for this AM */
 bool ibpe_validate(Oid opclassoid);
-
-/* prepare for index scan */
-IndexScanDesc ibpe_beginscan(Relation indexRelation, int nkeys, int norderbys);
-
-/* (re)start index scan */
-void ibpe_rescan(IndexScanDesc scan, ScanKey keys, int nkeys, ScanKey orderbys, int norderbys);
-
-/* fetch all valid tuples */
-int64 ibpe_getbitmap(IndexScanDesc scan, TIDBitmap *tbm);
-
-/* end index scan */
-void ibpe_endscan(IndexScanDesc scan);
 
 #endif // IBPE_UTILS_H

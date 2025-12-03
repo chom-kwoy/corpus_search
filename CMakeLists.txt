@@ -109,6 +109,8 @@ if ((pg_includedir_obtained EQUAL 0) AND (EXISTS "${pg_includedir}"))
         src/extension/ibpe_build.c
         src/extension/ibpe_backend.h
         src/extension/ibpe_backend.cpp
+        src/extension/ibpe_scan.h
+        src/extension/ibpe_scan.c
     )
 
     target_compile_definitions(ibpe PRIVATE USE_ASSERT_CHECKING)
