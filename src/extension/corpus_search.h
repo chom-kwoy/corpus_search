@@ -14,8 +14,12 @@ typedef struct index_builder_data *index_builder;
 
 struct index_entry
 {
-    int sent_id;
-    int pos;
+    enum {
+        POS_BITS = 11,
+        SENTID_BITS = 32 - POS_BITS,
+    };
+    unsigned int sent_id : SENTID_BITS;
+    unsigned int pos : POS_BITS;
 };
 
 typedef void (*index_builder_iterate_function)(void *user_data,

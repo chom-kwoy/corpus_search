@@ -6,6 +6,8 @@
 #include <access/amapi.h>
 #include <fmgr.h>
 
+#include "corpus_search.h"
+
 typedef struct
 {
     int32 vl_len_;      // varlena header
@@ -13,14 +15,19 @@ typedef struct
 } ibpe_options_data;
 
 // opaque is a special area at the end of all index pages
-typedef struct
+typedef struct __attribute__((packed))
 {
     uint16 flags;        // see #defines below
+    uint16 data_len;     // length of the data, in bytes
+    BlockNumber next_blkno;
     uint16 ibpe_page_id; // must equal IBPE_PAGE_ID, aligned at the end of the page
 } ibpe_opaque_data;
 
+// page flags
 #define IBPE_PAGE_META (1 << 0)
 #define IBPE_PAGE_DELETED (1 << 1)
+#define IBPE_PAGE_PTR (1 << 2) // containing pageid and offset for each token
+#define IBPE_PAGE_SID (1 << 3) // containing sentence ids
 
 #define IBPE_PAGE_ID (0x1B9E)
 
@@ -33,6 +40,27 @@ typedef struct
 } ibpe_metapage_data;
 
 #define IBPE_MAGICK_NUMBER (0xFEEDBEEF)
+
+// page related utils
+ibpe_opaque_data *ibpe_get_opaque(Page page);
+
+bool ibpe_is_page_deleted(Page page);
+
+int ibpe_page_get_free_space(Page page);
+
+// relcache
+typedef struct
+{
+    tokenizer tok;
+} ibpe_relcache;
+
+void ibpe_store_cache(Relation indexRelation, ibpe_relcache *cur_state);
+
+void ibpe_free_relcache(void *arg);
+
+ibpe_relcache ibpe_restore_or_create_cache(Relation indexRelation);
+
+// Callback routines
 
 /* build new index */
 IndexBuildResult *ibpe_build(Relation heapRelation,

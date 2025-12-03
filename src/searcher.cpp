@@ -143,15 +143,6 @@ searcher::searcher(std::string const &tokenized_sentences_path,
                  max_id);
     std::fflush(stdout);
 
-    if (max_len > MAX_POS + 1) {
-        std::runtime_error(
-            fmt::format("Sentence too long: max_len = {} > {}", max_len, MAX_POS + 1));
-    }
-    if (max_id > MAX_SENTID) {
-        std::runtime_error(
-            fmt::format("Too many sentences: max_sent_id = {} > {}", max_id, MAX_SENTID));
-    }
-
     // make index
     fmt::println("Making index...");
     std::fflush(stdout);

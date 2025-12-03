@@ -20,9 +20,11 @@ add_library(lib_corpus_search
     src/utils.hpp
     src/searcher.cpp
     src/searcher.hpp
-    src/index_builder.hpp src/index_builder.cpp
+    src/index_builder.cpp
+    src/index_builder.hpp
 )
 set_property(TARGET lib_corpus_search PROPERTY POSITION_INDEPENDENT_CODE ON)
+target_include_directories(lib_corpus_search INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/src/")
 
 ########### Link External libraries ###########
 # fmt
@@ -75,6 +77,7 @@ target_link_libraries(lib_corpus_search PRIVATE utf8cpp)
 
 # msgpack-cxx (included by tokenizers-cpp)
 find_package(msgpack-cxx REQUIRED)
+
 target_link_libraries(lib_corpus_search PUBLIC msgpack-cxx)
 
 ## roaring bitmap
@@ -98,10 +101,12 @@ execute_process(
 if ((pg_includedir_obtained EQUAL 0) AND (EXISTS "${pg_includedir}"))
     message(STATUS "Found PostgreSQL server header files in ${pg_includedir}.")
     add_library(ibpe SHARED
-        src/pg_extension.c
-        src/pg_extension.h
-        src/corpus_search.h
-        src/corpus_search.cpp
+        src/extension/pg_extension.c
+        src/extension/pg_extension.h
+        src/extension/corpus_search.h
+        src/extension/corpus_search.cpp
+        src/extension/relcache.c
+        src/extension/build_index.c
     )
 
     target_compile_definitions(ibpe PRIVATE USE_ASSERT_CHECKING)
@@ -126,7 +131,11 @@ if ((pg_includedir_obtained EQUAL 0) AND (EXISTS "${pg_includedir}"))
     message(STATUS "Will install postgres extension to ${pg_sharedir}/extension and ${pg_pkglibdir}")
 
     # install
-    install(DIRECTORY src/extension/ DESTINATION "${pg_sharedir}/extension")
+    install(FILES
+        "src/extension/corpussearch--1.0.sql"
+        "src/extension/corpussearch.control"
+        DESTINATION "${pg_sharedir}/extension"
+    )
     install(TARGETS ibpe LIBRARY DESTINATION ${pg_pkglibdir})
 
 else()

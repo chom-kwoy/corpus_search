@@ -6,6 +6,9 @@
 #include <algorithm>
 #include <fmt/core.h>
 
+static_assert(index_entry::SENTID_BITS == corpus_search::index_entry::SENTID_BITS);
+static_assert(index_entry::POS_BITS == corpus_search::index_entry::POS_BITS);
+
 struct index_builder_data
 {
     corpus_search::index_builder builder;
@@ -31,7 +34,7 @@ void index_builder_add_sentence(index_builder builder,
                                 int *p_tokens,
                                 int n_tokens) noexcept
 {
-    // builder->builder.add_sentence(sent_id, std::span<const int>(p_tokens, p_tokens + n_tokens));
+    builder->builder.add_sentence(sent_id, std::span<const int>(p_tokens, p_tokens + n_tokens));
 }
 
 void index_builder_finalize(index_builder builder) noexcept
@@ -43,13 +46,19 @@ void index_builder_iterate(index_builder builder,
                            index_builder_iterate_function callback,
                            void *user_data) noexcept
 {
+    auto const &index = builder->builder.get_index();
+
+    std::vector<int> tokens;
+    for (auto &&[token, sentids] : index) {
+        tokens.push_back(token);
+    }
+    std::sort(tokens.begin(), tokens.end());
+
+    // iterate in order
     std::vector<index_entry> buf;
-    for (auto &&[token, sentids] : builder->builder.get_index()) {
-        for (auto sentid : sentids) {
-            buf.push_back({
-                static_cast<int>(sentid.sent_id),
-                static_cast<int>(sentid.pos),
-            });
+    for (int token : tokens) {
+        for (auto sentid : index.at(token)) {
+            buf.push_back({sentid.sent_id, sentid.pos});
         }
         callback(user_data, token, buf.data(), buf.size());
         buf.clear();

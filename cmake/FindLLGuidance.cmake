@@ -15,6 +15,7 @@ find_program(CARGO_EXECUTABLE NAMES cargo)
 add_custom_target(cargo_build
     COMMAND ${CARGO_EXECUTABLE} build --release
     WORKING_DIRECTORY "${llguidance_SOURCE_DIR}/parser"
+    BYPRODUCTS "${llguidance_SOURCE_DIR}/target/release/libllguidance.a"
 )
 
 add_dependencies(LLGuidance::LLGuidance cargo_build)

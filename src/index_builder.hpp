@@ -8,16 +8,16 @@
 
 namespace corpus_search {
 
-constexpr int POS_BITS = 11;
-constexpr int MAX_POS = (1 << POS_BITS) - 1;
-constexpr int SENTID_BITS = 32 - POS_BITS;
-constexpr int MAX_SENTID = (1 << SENTID_BITS) - 1;
-
-static_assert(MAX_POS >= 2'000);
-static_assert(MAX_SENTID >= 2'000'000);
-
 struct index_entry
 {
+    static constexpr int POS_BITS = 11;
+    static constexpr int MAX_POS = (1 << POS_BITS) - 1;
+    static constexpr int SENTID_BITS = 32 - POS_BITS;
+    static constexpr int MAX_SENTID = (1 << SENTID_BITS) - 1;
+
+    static_assert(MAX_POS >= 2'000);
+    static_assert(MAX_SENTID >= 2'000'000);
+
     unsigned int sent_id : SENTID_BITS;
     unsigned int pos : POS_BITS;
 

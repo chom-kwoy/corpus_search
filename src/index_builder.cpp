@@ -1,13 +1,21 @@
 #include "index_builder.hpp"
 
 #include <algorithm>
+#include <fmt/core.h>
 
 namespace corpus_search {
 
 void index_builder::add_sentence(int sent_id, std::span<const int> tokens)
 {
+    if (sent_id < 0 || sent_id > index_entry::MAX_SENTID) {
+        throw std::runtime_error(fmt::format("Invalid sentid {}.", sent_id));
+    }
+
     int pos = 0;
     for (int token : tokens) {
+        if (pos > index_entry::MAX_POS) {
+            throw std::runtime_error(fmt::format("Invalid token pos {}.", pos));
+        }
         result[token].push_back({
             static_cast<unsigned int>(sent_id),
             static_cast<unsigned int>(pos),
