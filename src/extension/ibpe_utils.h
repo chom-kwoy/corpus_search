@@ -1,12 +1,10 @@
-#ifndef PG_EXTENSION_H
-#define PG_EXTENSION_H
+#ifndef IBPE_UTILS_H
+#define IBPE_UTILS_H
 
 #include <postgres.h>
 // The include order is important
 #include <access/amapi.h>
 #include <fmgr.h>
-
-#include "corpus_search.h"
 
 typedef struct
 {
@@ -17,8 +15,8 @@ typedef struct
 // opaque is a special area at the end of all index pages
 typedef struct __attribute__((packed))
 {
-    uint16 flags;        // see #defines below
-    uint16 data_len;     // length of the data, in bytes
+    uint16 flags;    // see #defines below
+    uint16 data_len; // length of the data, in bytes
     BlockNumber next_blkno;
     uint16 ibpe_page_id; // must equal IBPE_PAGE_ID, aligned at the end of the page
 } ibpe_opaque_data;
@@ -48,37 +46,7 @@ bool ibpe_is_page_deleted(Page page);
 
 int ibpe_page_get_free_space(Page page);
 
-// relcache
-typedef struct
-{
-    tokenizer tok;
-} ibpe_relcache;
-
-void ibpe_store_cache(Relation indexRelation, ibpe_relcache *cur_state);
-
-void ibpe_free_relcache(void *arg);
-
-ibpe_relcache ibpe_restore_or_create_cache(Relation indexRelation);
-
 // Callback routines
-
-/* build new index */
-IndexBuildResult *ibpe_build(Relation heapRelation,
-                             Relation indexRelation,
-                             struct IndexInfo *indexInfo);
-
-/* build empty index */
-void ibpe_buildempty(Relation indexRelation);
-
-/* insert this tuple */
-bool ibpe_insert(Relation indexRelation,
-                 Datum *values,
-                 bool *isnull,
-                 ItemPointer heap_tid,
-                 Relation heapRelation,
-                 IndexUniqueCheck checkUnique,
-                 bool indexUnchanged,
-                 struct IndexInfo *indexInfo);
 
 /* bulk delete */
 IndexBulkDeleteResult *ibpe_bulkdelete(IndexVacuumInfo *info,
@@ -117,4 +85,4 @@ int64 ibpe_getbitmap(IndexScanDesc scan, TIDBitmap *tbm);
 /* end index scan */
 void ibpe_endscan(IndexScanDesc scan);
 
-#endif // PG_EXTENSION_H
+#endif // IBPE_UTILS_H

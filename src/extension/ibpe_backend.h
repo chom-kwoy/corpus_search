@@ -1,5 +1,5 @@
-#ifndef CORPUS_SEARCH_H
-#define CORPUS_SEARCH_H
+#ifndef IBPE_BACKEND_H
+#define IBPE_BACKEND_H
 
 #include <stddef.h>
 
@@ -49,4 +49,4 @@ int tokenizer_tokenize(tokenizer tok, char const *string, int *out_tokens, size_
 }
 #endif
 
-#endif // CORPUS_SEARCH_H
+#endif // IBPE_BACKEND_H

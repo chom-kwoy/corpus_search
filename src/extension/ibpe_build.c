@@ -1,4 +1,6 @@
-#include "pg_extension.h"
+#include "ibpe_build.h"
+#include "ibpe_relcache.h"
+#include "ibpe_utils.h"
 
 #include <access/generic_xlog.h>
 #include <access/reloptions.h>

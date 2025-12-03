@@ -1,4 +1,4 @@
-#include "corpus_search.h"
+#include "ibpe_backend.h"
 
 #include "index_builder.hpp"
 #include "utils.hpp"
