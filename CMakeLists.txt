@@ -20,6 +20,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 add_library(lib_corpus_search
+    src/sizes.h
     src/tokenizer.cpp
     src/tokenizer.hpp
     src/searcher.cpp
@@ -29,6 +30,11 @@ add_library(lib_corpus_search
 )
 set_property(TARGET lib_corpus_search PROPERTY POSITION_INDEPENDENT_CODE ON)
 target_include_directories(lib_corpus_search INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/src/")
+
+target_compile_definitions(lib_corpus_search PUBLIC
+    CORPUS_SEARCH_INDEX_ENTRY_BITS=32
+    CORPUS_SEARCH_POSITION_BITS=11
+)
 
 ########### Link External libraries ###########
 ## fmt

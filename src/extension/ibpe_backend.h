@@ -3,6 +3,8 @@
 
 #include <stddef.h>
 
+#include "sizes.h"
+
 #ifdef __cplusplus
 extern "C" {
 #else
@@ -15,22 +17,22 @@ typedef struct index_builder_data *index_builder;
 typedef struct __attribute__((__may_alias__))
 {
     enum {
-        POS_BITS = 11,
-        SENTID_BITS = 32 - POS_BITS,
+        POS_BITS = CORPUS_SEARCH_POSITION_BITS,
+        SENTID_BITS = CORPUS_SEARCH_SENTID_BITS,
     };
-    unsigned int sent_id : SENTID_BITS;
-    unsigned int pos : POS_BITS;
+    sentid_t sent_id : SENTID_BITS;
+    tokpos_t pos : POS_BITS;
 } index_entry;
 
 typedef void (*index_builder_iterate_function)(void *user_data,
                                                int token,
-                                               index_entry const *p_sentids,
-                                               int n_sentids);
+                                               index_entry const *p_entries,
+                                               int n_entries);
 
 index_builder create_index_builder(void) noexcept;
 void destroy_index_builder(index_builder builder) noexcept;
 void index_builder_add_sentence(index_builder builder,
-                                int sent_id,
+                                sentid_t sent_id,
                                 int *p_tokens,
                                 int n_tokens) noexcept;
 void index_builder_finalize(index_builder builder) noexcept;
@@ -59,8 +61,8 @@ typedef struct
 sentid_vec search_corpus(tokenizer tok,
                          index_accessor_cb callback,
                          char const *search_term) noexcept;
-int const *sentid_vec_get_data(sentid_vec vec) noexcept;
-int sentid_vec_get_size(sentid_vec vec) noexcept;
+sentid_t const *sentid_vec_get_data(sentid_vec vec) noexcept;
+size_t sentid_vec_get_size(sentid_vec vec) noexcept;
 void destroy_sentid_vec(sentid_vec vec) noexcept;
 
 #ifdef __cplusplus

@@ -22,7 +22,7 @@ static auto get_index() -> corpus_search::index_builder &
     return idx;
 }
 
-static auto measure_time(std::string search_term) -> std::vector<int>
+static auto measure_time(std::string search_term) -> std::vector<sentid_t>
 {
     using namespace std::chrono;
     auto start_time = high_resolution_clock::now();

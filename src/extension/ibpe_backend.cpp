@@ -6,9 +6,6 @@
 #include <fmt/core.h>
 #include <type_traits>
 
-static_assert(index_entry::SENTID_BITS == corpus_search::index_entry::SENTID_BITS);
-static_assert(index_entry::POS_BITS == corpus_search::index_entry::POS_BITS);
-
 static_assert(std::is_layout_compatible_v<index_entry, corpus_search::index_entry>);
 static_assert(std::is_standard_layout_v<index_entry>);
 static_assert(std::is_standard_layout_v<corpus_search::index_entry>);
@@ -28,7 +25,7 @@ void destroy_index_builder(index_builder builder) noexcept
 }
 
 void index_builder_add_sentence(index_builder builder,
-                                int sent_id,
+                                sentid_t sent_id,
                                 int *p_tokens,
                                 int n_tokens) noexcept
 {
@@ -122,24 +119,24 @@ auto search_corpus(tokenizer tok,
 
         auto result = corpus_search::search(*tok_ptr, cb, std::string(search_term));
 
-        auto sentid_vector = new std::vector<int>(std::move(result));
+        auto sentid_vector = new std::vector<sentid_t>(std::move(result));
         return reinterpret_cast<sentid_vec>(sentid_vector);
     } catch (...) {
         return nullptr;
     }
 }
 
-auto sentid_vec_get_data(sentid_vec vec) noexcept -> int const *
+auto sentid_vec_get_data(sentid_vec vec) noexcept -> sentid_t const *
 {
-    return reinterpret_cast<std::vector<int> *>(vec)->data();
+    return reinterpret_cast<std::vector<sentid_t> *>(vec)->data();
 }
 
-auto sentid_vec_get_size(sentid_vec vec) noexcept -> int
+auto sentid_vec_get_size(sentid_vec vec) noexcept -> size_t
 {
-    return reinterpret_cast<std::vector<int> *>(vec)->size();
+    return reinterpret_cast<std::vector<sentid_t> *>(vec)->size();
 }
 
 void destroy_sentid_vec(sentid_vec vec) noexcept
 {
-    delete reinterpret_cast<std::vector<int> *>(vec);
+    delete reinterpret_cast<std::vector<sentid_t> *>(vec);
 }

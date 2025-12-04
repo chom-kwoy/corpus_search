@@ -9,7 +9,7 @@ namespace corpus_search {
 
 namespace {
 
-auto load_file(std::string const &path) -> std::unordered_map<int, std::vector<int>>
+auto load_file(std::string const &path) -> std::unordered_map<sentid_t, std::vector<int>>
 {
     // Open the file in binary mode, at the end to get the size
     auto file = std::ifstream(path, std::ios::binary);
@@ -20,7 +20,7 @@ auto load_file(std::string const &path) -> std::unordered_map<int, std::vector<i
 
     auto unpacker = msgpack::unpacker();
 
-    std::unordered_map<int, std::vector<int>> result;
+    std::unordered_map<sentid_t, std::vector<int>> result;
 
     int load_count = 0;
 
@@ -45,10 +45,10 @@ auto load_file(std::string const &path) -> std::unordered_map<int, std::vector<i
                 }
 
                 auto map = std::unordered_map<std::string, msgpack::object>(handle.get().convert());
-                int tok_id = int(map.at("id").convert());
-                auto sent_ids = std::vector<int>(map.at("tokens").convert());
-                sent_ids.shrink_to_fit();
-                result[tok_id] = std::move(sent_ids);
+                auto sent_id = sentid_t(map.at("id").convert());
+                auto tokens = std::vector<int>(map.at("tokens").convert());
+                tokens.shrink_to_fit();
+                result[sent_id] = std::move(tokens);
 
                 load_count += 1;
             }
@@ -74,7 +74,7 @@ auto index_builder::from_file(const std::string &tokenized_sentences_path) -> in
     auto sentences = load_file(tokenized_sentences_path);
 
     std::size_t max_len = 0;
-    int max_id = 0;
+    sentid_t max_id = 0;
     for (auto const &[sent_id, sentence] : sentences) {
         max_len = std::max(max_len, sentence.size());
         max_id = std::max(max_id, sent_id);
@@ -108,7 +108,7 @@ auto index_builder::from_file(const std::string &tokenized_sentences_path) -> in
     return index;
 }
 
-void index_builder::add_sentence(int sent_id, std::span<const int> tokens)
+void index_builder::add_sentence(sentid_t sent_id, std::span<const int> tokens)
 {
     if (sent_id < 0 || sent_id > index_entry::MAX_SENTID) {
         throw std::runtime_error(fmt::format("Invalid sentid {}.", sent_id));
@@ -120,8 +120,8 @@ void index_builder::add_sentence(int sent_id, std::span<const int> tokens)
             throw std::runtime_error(fmt::format("Invalid token pos {}.", pos));
         }
         result[token].push_back({
-            static_cast<unsigned int>(sent_id),
-            static_cast<unsigned int>(pos),
+            sent_id,
+            static_cast<tokpos_t>(pos),
         });
         pos += 1;
     }

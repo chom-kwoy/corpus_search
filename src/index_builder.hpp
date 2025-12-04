@@ -1,7 +1,8 @@
 #ifndef INDEX_BUILDER_HPP
 #define INDEX_BUILDER_HPP
 
-#include <cstdint>
+#include "sizes.h"
+
 #include <span>
 #include <string>
 #include <unordered_map>
@@ -11,16 +12,16 @@ namespace corpus_search {
 
 struct index_entry
 {
-    static constexpr int POS_BITS = 11;
+    static constexpr int POS_BITS = CORPUS_SEARCH_POSITION_BITS;
     static constexpr int MAX_POS = (1 << POS_BITS) - 1;
-    static constexpr int SENTID_BITS = 32 - POS_BITS;
+    static constexpr int SENTID_BITS = CORPUS_SEARCH_SENTID_BITS;
     static constexpr int MAX_SENTID = (1 << SENTID_BITS) - 1;
 
     static_assert(MAX_POS >= 2'000);
     static_assert(MAX_SENTID >= 2'000'000);
 
-    unsigned int sent_id : SENTID_BITS;
-    unsigned int pos : POS_BITS;
+    sentid_t sent_id : SENTID_BITS;
+    tokpos_t pos : POS_BITS;
 
     auto operator<(index_entry const &other) const -> bool
     {
@@ -35,13 +36,12 @@ struct index_entry
         return std::tie(sent_id, pos) != std::tie(other.sent_id, other.pos);
     }
 
-    constexpr auto hash() const -> std::uint32_t { return (sent_id << POS_BITS) | pos; }
-    static constexpr auto from_hash(std::uint32_t hash) -> index_entry
+    constexpr auto hash() const -> index_entry_hash_t { return (sent_id << POS_BITS) | pos; }
+    static constexpr auto from_hash(index_entry_hash_t hash) -> index_entry
     {
         return {hash >> POS_BITS, hash};
     }
 };
-static_assert(sizeof(index_entry) == 4);
 
 class index_builder
 {
@@ -51,7 +51,7 @@ public:
     index_builder() = default;
     static index_builder from_file(std::string const &tokenized_sentences_path);
 
-    void add_sentence(int sent_id, std::span<const int> tokens);
+    void add_sentence(sentid_t sent_id, std::span<const int> tokens);
     void finalize_index();
     auto get_index() const -> std::unordered_map<int, std::vector<index_entry>> const &;
 };

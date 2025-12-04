@@ -17,10 +17,10 @@ using candset = std::optional<std::vector<index_entry>>;
 
 namespace { // static linkage
 
-auto get_sent_ids(std::vector<index_entry> const &self) -> std::vector<int>
+auto get_sent_ids(std::vector<index_entry> const &self) -> std::vector<sentid_t>
 {
-    std::vector<int> output;
-    int last_sent_id = -1;
+    std::vector<sentid_t> output;
+    sentid_t last_sent_id = -1;
     for (auto entry : self) {
         if (entry.sent_id != last_sent_id) {
             output.push_back(entry.sent_id);
@@ -236,7 +236,7 @@ auto generate_cands(tokenizer const &tok,
 
 auto search(tokenizer const &tok,
             std::function<index_accessor> const &index,
-            std::string const &search_term) -> std::vector<int>
+            std::string const &search_term) -> std::vector<sentid_t>
 {
     LlgConstraintInit init;
     llg_constraint_init_set_defaults(&init, tok.get_ll_tokenizer());
