@@ -301,7 +301,11 @@ static void ibpe_build_callback(Relation indexRelation,
              tokens[2]);
     }
 
-    int sent_id = (tid->ip_blkid.bi_lo << 4) | (tid->ip_blkid.bi_lo << 2) | tid->ip_posid;
+    // FIXME: allow larger blkid
+    if (tid->ip_blkid.bi_hi != 0) {
+        elog(ERROR, "Block ID too large");
+    }
+    int sent_id = (tid->ip_blkid.bi_lo << 16) | tid->ip_posid;
 
     index_builder_add_sentence(build_state->builder, sent_id, tokens, n_tokens);
 

@@ -72,7 +72,9 @@ static int ibpe_access_index(void *user_data, int token, index_entry *data, int 
     int num_elems = *((int *) begin);
     begin += sizeof(int);
 
-    elog(NOTICE, "Found %d matches for token %d", num_elems, token);
+    if (data) {
+        elog(NOTICE, "Found %d matches for token %d", num_elems, token);
+    }
 
     for (int i = 0; i < num_elems; ++i) {
         if (i >= num_entries) {
@@ -169,10 +171,21 @@ int64 ibpe_getbitmap(IndexScanDesc scan, TIDBitmap *tbm)
         elog(NOTICE, "data[0] = %d", data[0]);
     }
 
-    // TODO: fill tbm with results
-    elog(ERROR, "ibpe_getbitmap: Not implemented");
+    // fill tbm with results
+    for (int i = 0; i < size; ++i) {
+        ItemPointerData tid;
+
+        // FIXME: allow larger blkid
+        tid.ip_blkid.bi_hi = 0;
+        tid.ip_blkid.bi_lo = (data[i] >> 16) & 0xFFFF;
+        tid.ip_posid = data[i] & 0xFFFF;
+
+        tbm_add_tuples(tbm, &tid, 1, true);
+    }
 
     destroy_sentid_vec(results);
+
+    return size;
 }
 
 /* end index scan */
