@@ -124,6 +124,8 @@ void ibpe_relcache_reload_index(ibpe_relcache *cache,
         };
     }
 
+    FreeAccessStrategy(bas);
+
     elog(NOTICE, "Reading End. Added %d tokens", token_recs_added);
 
     Assert(token_recs_added == meta->num_indexed_tokens);

@@ -101,7 +101,7 @@ static int ibpe_access_index(void *user_data, int token, index_entry *data, int 
             end = page + ((PageHeader) page)->pd_upper;
         }
 
-        if (i < num_entries && data) {
+        if (data) {
             data[i] = *((index_entry *) begin);
         }
 
@@ -158,6 +158,8 @@ int64 ibpe_getbitmap(IndexScanDesc scan, TIDBitmap *tbm)
         .func = ibpe_access_index,
     };
     sentid_vec results = search_corpus(cache->tok, callback, search_term);
+
+    FreeAccessStrategy(bas);
 
     int const *data = sentid_vec_get_data(results);
     int size = sentid_vec_get_size(results);
