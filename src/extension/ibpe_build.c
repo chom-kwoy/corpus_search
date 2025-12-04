@@ -39,6 +39,7 @@ static void ibpe_fill_metapage(Relation indexRelation, Page metaPage)
     metadata->magickNumber = IBPE_MAGICK_NUMBER;
     strncpy(metadata->tokenizer_path, tok_path, TOKENIZER_PATH_MAXLEN);
     metadata->index_built = false;
+    metadata->num_indexed_tokens = 0;
 
     ((PageHeader) metaPage)->pd_lower += sizeof(ibpe_metapage_data);
     Assert(((PageHeader) metaPage)->pd_lower <= ((PageHeader) metaPage)->pd_upper);
@@ -232,6 +233,7 @@ typedef struct
 {
     Relation indexRelation;
     int64 indtuples; // total number of tuples indexed
+    int num_indexed_tokens;
     tokenizer tok;
 
     // interface to the C++ backend
@@ -296,13 +298,6 @@ static void ibpe_build_callback(Relation indexRelation,
 
     build_state->indtuples++;
 }
-
-typedef struct
-{
-    int token;
-    BlockNumber blkno;
-    int offset;
-} ibpe_ptr_record;
 
 static void ibpe_flush_records_to_link(ibpe_build_state *state)
 {
@@ -386,13 +381,14 @@ IndexBuildResult *ibpe_build(Relation heapRelation, Relation indexRelation, Inde
 
     ibpe_init_metapage(indexRelation, MAIN_FORKNUM);
 
-    ibpe_relcache index_state = ibpe_restore_or_create_cache(indexRelation);
+    ibpe_relcache *cache = ibpe_restore_or_create_cache(indexRelation);
 
     // initialize build state
     ibpe_build_state build_state;
     build_state.indexRelation = indexRelation;
     build_state.indtuples = 0;
-    build_state.tok = index_state.tok;
+    build_state.num_indexed_tokens = 0;
+    build_state.tok = cache->tok;
 
     build_state.builder = create_index_builder();
     if (!build_state.builder) {
@@ -445,6 +441,10 @@ IndexBuildResult *ibpe_build(Relation heapRelation, Relation indexRelation, Inde
 
     ibpe_metapage_data *metadata = (ibpe_metapage_data *) PageGetContents(metaPage);
     metadata->index_built = true;
+    metadata->num_indexed_tokens = build_state.num_indexed_tokens;
+
+    // add built index data to relcache
+    ibpe_relcache_reload_index(cache, indexRelation, metadata);
 
     GenericXLogFinish(state);
     UnlockReleaseBuffer(buffer);

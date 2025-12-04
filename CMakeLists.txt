@@ -4,6 +4,10 @@ include(FetchContent)
 include(GNUInstallDirs)
 include(cmake/CPM.cmake)
 
+if(POLICY CMP0167)
+  cmake_policy(SET CMP0167 NEW)
+endif()
+
 project(corpus_search LANGUAGES C CXX)
 
 set(CMAKE_C_STANDARD 11)
@@ -27,7 +31,7 @@ set_property(TARGET lib_corpus_search PROPERTY POSITION_INDEPENDENT_CODE ON)
 target_include_directories(lib_corpus_search INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/src/")
 
 ########### Link External libraries ###########
-# fmt
+## fmt
 FetchContent_Declare(
   fmt
   GIT_REPOSITORY https://github.com/fmtlib/fmt
@@ -39,46 +43,70 @@ set_property(TARGET fmt PROPERTY POSITION_INDEPENDENT_CODE ON)
 
 target_link_libraries(lib_corpus_search PRIVATE fmt::fmt)
 
-# nlohmann json
-FetchContent_Declare(json URL https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz)
+## nlohmann json
+FetchContent_Declare(
+    json
+    URL https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz
+    EXCLUDE_FROM_ALL
+)
 FetchContent_MakeAvailable(json)
 set_property(TARGET nlohmann_json PROPERTY POSITION_INDEPENDENT_CODE ON)
 
 target_link_libraries(lib_corpus_search PRIVATE nlohmann_json::nlohmann_json)
 
-# tokenizers-cpp
-set(TOKENZIER_CPP_PATH "../tokenizers-cpp" CACHE PATH
-    "Path to tokenizers-cpp library. Use `git clone https://github.com/mlc-ai/tokenizers-cpp.git --recurse-submodules`.")
-add_subdirectory(${TOKENZIER_CPP_PATH} tokenizers EXCLUDE_FROM_ALL)
+## re2 (version 2023-11-01)
+FetchContent_Declare(
+  re2
+  GIT_REPOSITORY https://github.com/google/re2
+  GIT_TAG        "2023-11-01"
+  EXCLUDE_FROM_ALL
+)
+FetchContent_MakeAvailable(re2)
+set_property(TARGET re2 PROPERTY POSITION_INDEPENDENT_CODE ON)
+
+target_link_libraries(lib_corpus_search PRIVATE re2::re2)
+
+## tokenizers-cpp
+FetchContent_Declare(
+  tokenizers_cpp
+  GIT_REPOSITORY https://github.com/mlc-ai/tokenizers-cpp
+  GIT_TAG        55d53aa38dc8df7d9c8bd9ed50907e82ae83ce66
+  EXCLUDE_FROM_ALL
+)
+FetchContent_MakeAvailable(tokenizers_cpp)
 set_property(TARGET tokenizers_cpp PROPERTY POSITION_INDEPENDENT_CODE ON)
 
 target_link_libraries(lib_corpus_search PRIVATE tokenizers_cpp)
 
-# llguidance
+## utf8-cpp header-only library
+CPMAddPackage(
+  NAME utfcpp
+  GITHUB_REPOSITORY "nemtrif/utfcpp"
+  GIT_TAG 70795627871251f6c57f952e667303a2381c2fc5
+)
+add_library(utfcpp INTERFACE)
+target_include_directories(utfcpp INTERFACE "${utfcpp_SOURCE_DIR}/source")
+
+target_link_libraries(lib_corpus_search PRIVATE utfcpp)
+
+## msgpack-cxx
+CPMAddPackage(
+  NAME msgpack-cxx
+  GITHUB_REPOSITORY "msgpack/msgpack-c"
+  GIT_TAG b0d379a6f29af7dd65423ff78a94de8948f01bd8
+)
+
+target_link_libraries(lib_corpus_search PUBLIC msgpack-cxx)
+
+## llguidance
 find_package(LLGuidance REQUIRED)
 
 target_link_libraries(lib_corpus_search PRIVATE LLGuidance::LLGuidance)
 
-# boost dynamic_bitset
+## boost dynamic_bitset
 find_package(Boost REQUIRED)
 
 target_include_directories(lib_corpus_search PRIVATE ${Boost_INCLUDE_DIRS})
-
-# re2 (version 2023-11-01)
-find_package(re2 REQUIRED)
-
-target_link_libraries(lib_corpus_search PRIVATE re2::re2)
-
-# utf8cpp
-add_library(utf8cpp INTERFACE)
-target_include_directories(utf8cpp INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/utf8cpp")
-
-target_link_libraries(lib_corpus_search PRIVATE utf8cpp)
-
-# msgpack-cxx (included by tokenizers-cpp)
-find_package(msgpack-cxx REQUIRED)
-
-target_link_libraries(lib_corpus_search PUBLIC msgpack-cxx)
 
 ## roaring bitmap
 # CPMAddPackage(

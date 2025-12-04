@@ -36,6 +36,7 @@ typedef struct
     uint32 magickNumber; // must equal IBPE_MAGICK_NUMBER
     char tokenizer_path[TOKENIZER_PATH_MAXLEN + 1];
     bool index_built;
+    int num_indexed_tokens;
 } ibpe_metapage_data;
 
 #define IBPE_MAGICK_NUMBER (0xFEEDBEEF)

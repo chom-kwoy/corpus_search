@@ -8,7 +8,7 @@
 
 typedef struct
 {
-    ibpe_relcache state;
+    ibpe_relcache *state;
 } ibpe_scan_opaque;
 
 /* prepare for index scan */

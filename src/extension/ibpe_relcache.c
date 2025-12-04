@@ -36,16 +36,77 @@ static void ibpe_free_relcache_callback(void *arg)
     destroy_tokenizer(state_mem->tok);
 }
 
-static ibpe_relcache *ibpe_fill_cache(Relation indexRelation, ibpe_metapage_data *meta)
+void ibpe_relcache_reload_index(ibpe_relcache *cache,
+                                Relation indexRelation,
+                                ibpe_metapage_data *meta)
+{
+    elog(NOTICE, "Loading index from disk");
+
+    cache->num_indexed_tokens = meta->num_indexed_tokens;
+    cache->token_sid_map = MemoryContextAlloc(indexRelation->rd_indexcxt,
+                                              sizeof(ibpe_ptr_record) * meta->num_indexed_tokens);
+
+    BufferAccessStrategy bas = GetAccessStrategy(BAS_BULKREAD);
+
+    Buffer ptr_page_buf = ReadBufferExtended(indexRelation, MAIN_FORKNUM, 1, RBM_NORMAL, bas);
+    LockBuffer(ptr_page_buf, BUFFER_LOCK_SHARE);
+
+    Page page = BufferGetPage(ptr_page_buf);
+
+    int tokens_added = 0;
+    for (;;) {
+        ibpe_opaque_data *opaque = ibpe_get_opaque(page);
+        Assert(opaque->ibpe_page_id == IBPE_PAGE_ID);
+        Assert((opaque->flags & IBPE_PAGE_PTR) != 0);
+
+        // Read contents from page
+        char *p = PageGetContents(page);
+        while (p < PageGetContents(page) + opaque->data_len) {
+            ibpe_ptr_record *rec = (ibpe_ptr_record *) p;
+
+            elog(NOTICE,
+                 "Read: token %d -> (blkno=%d, offset=%d)",
+                 rec->token,
+                 rec->blkno,
+                 rec->offset);
+
+            cache->token_sid_map[tokens_added++] = (ibpe_ptr_record){
+                rec->token,
+                rec->blkno,
+                rec->offset,
+            };
+
+            p += sizeof(ibpe_ptr_record);
+        }
+
+        BlockNumber next_blkno = opaque->next_blkno;
+        if (next_blkno == InvalidBlockNumber) {
+            break;
+        }
+
+        UnlockReleaseBuffer(ptr_page_buf);
+
+        elog(NOTICE, "Reading page #%d", next_blkno);
+
+        ptr_page_buf = ReadBufferExtended(indexRelation, MAIN_FORKNUM, next_blkno, RBM_NORMAL, bas);
+        LockBuffer(ptr_page_buf, BUFFER_LOCK_SHARE);
+
+        page = BufferGetPage(ptr_page_buf);
+    }
+
+    UnlockReleaseBuffer(ptr_page_buf);
+}
+
+static ibpe_relcache *ibpe_relcache_fill(Relation indexRelation, ibpe_metapage_data *meta)
 {
     // allocate memory for amcache
-    ibpe_relcache *state_mem = MemoryContextAlloc(indexRelation->rd_indexcxt, sizeof(ibpe_relcache));
+    ibpe_relcache *cache = MemoryContextAlloc(indexRelation->rd_indexcxt, sizeof(ibpe_relcache));
 
     // initialize tokenizer
     elog(NOTICE, "Loading tokenizer from '%s'", meta->tokenizer_path);
     char errmsg[256] = {};
-    state_mem->tok = create_tokenizer(meta->tokenizer_path, errmsg, 256);
-    if (!state_mem->tok) {
+    cache->tok = create_tokenizer(meta->tokenizer_path, errmsg, 256);
+    if (!cache->tok) {
         elog(ERROR, "Cannot load tokenizer: %s", errmsg);
     }
 
@@ -53,52 +114,18 @@ static ibpe_relcache *ibpe_fill_cache(Relation indexRelation, ibpe_metapage_data
     MemoryContextCallback *cb = MemoryContextAlloc(indexRelation->rd_indexcxt,
                                                    sizeof(MemoryContextCallback));
     cb->func = ibpe_free_relcache_callback;
-    cb->arg = state_mem;
+    cb->arg = cache;
     MemoryContextRegisterResetCallback(indexRelation->rd_indexcxt, cb);
 
     // Load index if already built
     if (meta->index_built) {
-        elog(NOTICE, "Loading index from disk");
-
-        BufferAccessStrategy bas = GetAccessStrategy(BAS_BULKREAD);
-
-        Buffer ptr_page_buf = ReadBufferExtended(indexRelation, MAIN_FORKNUM, 1, RBM_NORMAL, bas);
-        LockBuffer(ptr_page_buf, BUFFER_LOCK_SHARE);
-
-        Page page = BufferGetPage(ptr_page_buf);
-
-        for (;;) {
-            Assert(ibpe_get_opaque(page)->ibpe_page_id == IBPE_PAGE_ID);
-            Assert((ibpe_get_opaque(page)->flags & IBPE_PAGE_PTR) != 0);
-
-            // TODO: read contents from page
-
-            BlockNumber next_blkno = ibpe_get_opaque(page)->next_blkno;
-            if (next_blkno == InvalidBlockNumber) {
-                break;
-            }
-
-            UnlockReleaseBuffer(ptr_page_buf);
-
-            elog(NOTICE, "Reading page #%d", next_blkno);
-
-            ptr_page_buf = ReadBufferExtended(indexRelation,
-                                              MAIN_FORKNUM,
-                                              next_blkno,
-                                              RBM_NORMAL,
-                                              bas);
-            LockBuffer(ptr_page_buf, BUFFER_LOCK_SHARE);
-
-            page = BufferGetPage(ptr_page_buf);
-        }
-
-        UnlockReleaseBuffer(ptr_page_buf);
+        ibpe_relcache_reload_index(cache, indexRelation, meta);
     }
 
-    return state_mem;
+    return cache;
 }
 
-ibpe_relcache ibpe_restore_or_create_cache(Relation indexRelation)
+ibpe_relcache *ibpe_restore_or_create_cache(Relation indexRelation)
 {
     ibpe_relcache *state_mem;
     if (!indexRelation->rd_amcache) {
@@ -118,7 +145,7 @@ ibpe_relcache ibpe_restore_or_create_cache(Relation indexRelation)
         }
 
         // restore state from metapage
-        state_mem = ibpe_fill_cache(indexRelation, meta);
+        state_mem = ibpe_relcache_fill(indexRelation, meta);
 
         UnlockReleaseBuffer(buffer);
 
@@ -126,5 +153,5 @@ ibpe_relcache ibpe_restore_or_create_cache(Relation indexRelation)
     } else {
         state_mem = indexRelation->rd_amcache;
     }
-    return *state_mem;
+    return state_mem;
 }
