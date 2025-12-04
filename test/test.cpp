@@ -27,7 +27,16 @@ static auto measure_time(std::string search_term) -> std::vector<int>
     using namespace std::chrono;
     auto start_time = high_resolution_clock::now();
 
-    auto result = search(get_tok(), get_index(), search_term);
+    auto result = search(
+        get_tok(),
+        [](int token) -> std::vector<corpus_search::index_entry> {
+            auto& index = get_index().get_index();
+            if (index.count(token) == 0) {
+                return {};
+            }
+            return index.at(token);
+        },
+        search_term);
 
     auto end_time = high_resolution_clock::now();
 

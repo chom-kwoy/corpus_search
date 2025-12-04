@@ -36,6 +36,83 @@ void ibpe_rescan(IndexScanDesc scan, ScanKey keys, int nkeys, ScanKey orderbys, 
     }
 }
 
+typedef struct
+{
+    Relation indexRelation;
+    ibpe_relcache *cache;
+    BufferAccessStrategy bas;
+} ibpe_access_index_state;
+
+static int ibpe_access_index(void *user_data, int token, index_entry *data, int num_entries)
+{
+    ibpe_access_index_state *state = user_data;
+
+    if (token < 0 || token >= state->cache->vocab_size) {
+        elog(ERROR, "ibpe_access_index: token %d out of range", token);
+    }
+
+    ibpe_ptr_record ptr = state->cache->token_sid_map[token];
+
+    // no entries for this token
+    if (ptr.blkno == InvalidBlockNumber) {
+        return 0;
+    }
+
+    Buffer buffer = ReadBufferExtended(state->indexRelation,
+                                       MAIN_FORKNUM,
+                                       ptr.blkno,
+                                       RBM_NORMAL,
+                                       state->bas);
+    LockBuffer(buffer, BUFFER_LOCK_SHARE);
+    Page page = BufferGetPage(buffer);
+
+    char const *begin = PageGetContents(page) + ptr.offset;
+    char const *end = page + ((PageHeader) page)->pd_upper;
+
+    int num_elems = *((int *) begin);
+    begin += sizeof(int);
+
+    elog(NOTICE, "Found %d matches for token %d", num_elems, token);
+
+    for (int i = 0; i < num_elems; ++i) {
+        if (i >= num_entries) {
+            break;
+        }
+
+        if (begin + sizeof(index_entry) >= end) {
+            // follow pointer to next page blkno
+            int next_blkno = ibpe_get_opaque(page)->next_blkno;
+            if (next_blkno == InvalidBlockNumber) {
+                elog(ERROR, "ibpe_access_index: unexpected end of pages");
+            }
+
+            UnlockReleaseBuffer(buffer);
+
+            // open next page
+            buffer = ReadBufferExtended(state->indexRelation,
+                                        MAIN_FORKNUM,
+                                        next_blkno,
+                                        RBM_NORMAL,
+                                        state->bas);
+            LockBuffer(buffer, BUFFER_LOCK_SHARE);
+            page = BufferGetPage(buffer);
+
+            begin = PageGetContents(page);
+            end = page + ((PageHeader) page)->pd_upper;
+        }
+
+        if (i < num_entries && data) {
+            data[i] = *((index_entry *) begin);
+        }
+
+        begin += sizeof(index_entry);
+    }
+
+    UnlockReleaseBuffer(buffer);
+
+    return num_elems;
+}
+
 /* fetch all valid tuples */
 int64 ibpe_getbitmap(IndexScanDesc scan, TIDBitmap *tbm)
 {
@@ -64,14 +141,36 @@ int64 ibpe_getbitmap(IndexScanDesc scan, TIDBitmap *tbm)
     }
 
     // get text from skey
-    char const *search_text = text_to_cstring(DatumGetTextPP(skey->sk_argument));
+    char const *search_term = text_to_cstring(DatumGetTextPP(skey->sk_argument));
+    elog(NOTICE, "ibpe_getbitmap got search text='%s'", search_term);
 
-    elog(NOTICE, "ibpe_getbitmap got search text='%s'", search_text);
-
+    // run the actual search
     BufferAccessStrategy bas = GetAccessStrategy(BAS_BULKREAD);
 
-    // TODO
+    ibpe_access_index_state access_state = {
+        .indexRelation = scan->indexRelation,
+        .cache = cache,
+        .bas = bas,
+    };
+
+    index_accessor_cb callback = {
+        .user_data = &access_state,
+        .func = ibpe_access_index,
+    };
+    sentid_vec results = search_corpus(cache->tok, callback, search_term);
+
+    int const *data = sentid_vec_get_data(results);
+    int size = sentid_vec_get_size(results);
+
+    elog(NOTICE, "ibpe_getbitmap: Found %d results", size);
+    if (size > 0) {
+        elog(NOTICE, "data[0] = %d", data[0]);
+    }
+
+    // TODO: fill tbm with results
     elog(ERROR, "ibpe_getbitmap: Not implemented");
+
+    destroy_sentid_vec(results);
 }
 
 /* end index scan */

@@ -4,13 +4,16 @@
 #include "index_builder.hpp"
 #include "tokenizer.hpp"
 
+#include <functional>
 #include <string>
 #include <vector>
 
 namespace corpus_search {
 
+using index_accessor = auto(int token) -> std::vector<index_entry>;
+
 auto search(tokenizer const &tok,
-            index_builder const &index,
+            std::function<index_accessor> const &index,
             std::string const &search_term) -> std::vector<int>;
 
 } // namespace corpus_search

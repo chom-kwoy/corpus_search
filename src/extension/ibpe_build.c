@@ -345,7 +345,7 @@ static void ibpe_flush_records_to_link(ibpe_build_state *state)
 
 static void ibpe_index_builder_iterate(void *user_data,
                                        int token,
-                                       struct index_entry const *p_sentids,
+                                       index_entry const *p_sentids,
                                        int n_sentids)
 {
     ibpe_build_state *state = user_data;
@@ -378,7 +378,7 @@ static void ibpe_index_builder_iterate(void *user_data,
                              IBPE_PAGE_SID,
                              &state->sid_page_prevno,
                              (char *) &p_sentids[i],
-                             sizeof(struct index_entry),
+                             sizeof(index_entry),
                              NULL)) {
             ibpe_flush_records_to_link(state);
         }

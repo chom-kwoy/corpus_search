@@ -12,7 +12,7 @@ extern "C" {
 // index builder
 typedef struct index_builder_data *index_builder;
 
-struct __attribute__((__may_alias__)) index_entry
+typedef struct __attribute__((__may_alias__))
 {
     enum {
         POS_BITS = 11,
@@ -20,11 +20,11 @@ struct __attribute__((__may_alias__)) index_entry
     };
     unsigned int sent_id : SENTID_BITS;
     unsigned int pos : POS_BITS;
-};
+} index_entry;
 
 typedef void (*index_builder_iterate_function)(void *user_data,
                                                int token,
-                                               struct index_entry const *p_sentids,
+                                               index_entry const *p_sentids,
                                                int n_sentids);
 
 index_builder create_index_builder(void) noexcept;
@@ -49,7 +49,16 @@ int tokenizer_get_vocab_size(tokenizer tok) noexcept;
 // searcher
 typedef struct sentid_vec_data *sentid_vec;
 
-sentid_vec search_corpus(tokenizer tok, index_builder index, char const *search_term) noexcept;
+typedef int (*index_accessor)(void *user_data, int token, index_entry *data, int num_entries);
+typedef struct
+{
+    void *user_data;
+    index_accessor func;
+} index_accessor_cb;
+
+sentid_vec search_corpus(tokenizer tok,
+                         index_accessor_cb callback,
+                         char const *search_term) noexcept;
 int const *sentid_vec_get_data(sentid_vec vec) noexcept;
 int sentid_vec_get_size(sentid_vec vec) noexcept;
 void destroy_sentid_vec(sentid_vec vec) noexcept;

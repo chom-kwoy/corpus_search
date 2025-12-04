@@ -101,13 +101,27 @@ auto tokenizer_get_vocab_size(tokenizer tok) noexcept -> int
 }
 
 auto search_corpus(tokenizer tok,
-                   index_builder index,
+                   index_accessor_cb callback,
                    char const *search_term) noexcept -> sentid_vec
 {
     try {
-        auto result = corpus_search::search(*reinterpret_cast<corpus_search::tokenizer *>(tok),
-                                            *reinterpret_cast<corpus_search::index_builder *>(index),
-                                            std::string(search_term));
+        auto tok_ptr = reinterpret_cast<corpus_search::tokenizer *>(tok);
+        auto cb = [callback](int token) -> std::vector<corpus_search::index_entry> {
+            int num_entries = callback.func(callback.user_data, token, nullptr, 0);
+            if (num_entries > 0) {
+                auto result = std::vector<corpus_search::index_entry>(num_entries);
+                callback.func(callback.user_data,
+                              token,
+                              reinterpret_cast<index_entry *>(result.data()),
+                              num_entries);
+
+                return result;
+            }
+            return {};
+        };
+
+        auto result = corpus_search::search(*tok_ptr, cb, std::string(search_term));
+
         auto sentid_vector = new std::vector<int>(std::move(result));
         return reinterpret_cast<sentid_vec>(sentid_vector);
     } catch (...) {

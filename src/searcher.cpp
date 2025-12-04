@@ -1,8 +1,5 @@
 #include "searcher.hpp"
 
-#include "index_builder.hpp"
-#include "tokenizer.hpp"
-
 #include <queue>
 #include <fmt/chrono.h>
 #include <fmt/core.h>
@@ -65,8 +62,7 @@ static auto nonzero_pos(boost::dynamic_bitset<> const &mask) -> std::vector<int>
     return result;
 }
 
-auto followed_by(std::vector<index_entry> const &self,
-                 candset const &other) -> std::vector<index_entry>
+auto followed_by(std::vector<index_entry> &&self, candset const &other) -> std::vector<index_entry>
 {
     if (!other.has_value()) {
         return self;
@@ -77,7 +73,8 @@ auto followed_by(std::vector<index_entry> const &self,
 
     std::vector<index_entry> result;
 
-    auto it1 = arr1.begin(), it2 = arr2.begin();
+    auto it1 = arr1.begin();
+    auto it2 = arr2.begin();
     while (it1 != arr1.end() && it2 != arr2.end()) {
         auto entry1 = *it1;
         auto entry2 = *it2;
@@ -103,7 +100,7 @@ auto followed_by(std::vector<index_entry> const &self,
     return result;
 }
 
-using vec_pointer = std::vector<index_entry> const *;
+using vec_pointer = std::span<const index_entry>;
 using vec_object = std::vector<index_entry>;
 using pointer_or_object = std::variant<vec_pointer, vec_object>;
 
@@ -121,29 +118,9 @@ auto merge_sorted_lists(std::vector<pointer_or_object> const &cand_lists) -> std
     };
     auto pending = std::priority_queue<queue_item, std::vector<queue_item>, comparator>{};
 
-    auto get_size = [](auto &&x) {
-        return std::visit(
-            [](auto &&arg) {
-                using T = std::decay_t<decltype(arg)>;
-                if constexpr (std::is_same_v<T, vec_pointer>) {
-                    return arg->size();
-                } else {
-                    return arg.size();
-                }
-            },
-            x);
-    };
+    auto get_size = [](auto &&x) { return std::visit([](auto &&arg) { return arg.size(); }, x); };
     auto get_item = [](auto &&x, std::size_t index) {
-        return std::visit(
-            [index](auto &&arg) {
-                using T = std::decay_t<decltype(arg)>;
-                if constexpr (std::is_same_v<T, vec_pointer>) {
-                    return (*arg)[index];
-                } else {
-                    return arg[index];
-                }
-            },
-            x);
+        return std::visit([index](auto &&arg) { return arg[index]; }, x);
     };
 
     for (int i = 0; i < cand_lists.size(); ++i) {
@@ -172,7 +149,7 @@ auto merge_sorted_lists(std::vector<pointer_or_object> const &cand_lists) -> std
 }
 
 auto generate_cands(tokenizer const &tok,
-                    index_builder const &index,
+                    std::function<index_accessor> const &index,
                     LlgMatcher *matcher,
                     int pad_size,
                     RE2 const &search_regex,
@@ -207,22 +184,21 @@ auto generate_cands(tokenizer const &tok,
             cur_prefix = cur_prefix.substr(it - cur_prefix.begin());
         }
 
-        if (index.get_index().count(token) == 0) {
+        auto matches = index(token);
+        if (matches.size() == 0) {
             continue;
         }
-
-        auto const &matches = index.get_index().at(token);
 
         if (cache.count(cur_prefix) > 0) {
             auto const &cands = cache.at(cur_prefix);
 
-            cand_lists.push_back(followed_by(matches, cands));
+            cand_lists.push_back(followed_by(std::move(matches), cands));
             continue;
         }
 
         auto cur_prefix_view = absl::string_view(cur_prefix);
         if (RE2::Consume(&cur_prefix_view, search_regex)) {
-            cand_lists.push_back(&matches);
+            cand_lists.push_back(matches);
             continue;
         }
 
@@ -243,7 +219,7 @@ auto generate_cands(tokenizer const &tok,
             throw std::runtime_error("llg_matcher_rollback returned error");
         }
 
-        cand_lists.push_back(followed_by(matches, cands));
+        cand_lists.push_back(followed_by(std::move(matches), cands));
     }
 
     // union the sorted sequences in vec_result
@@ -259,7 +235,7 @@ auto generate_cands(tokenizer const &tok,
 } // namespace
 
 auto search(tokenizer const &tok,
-            index_builder const &index,
+            std::function<index_accessor> const &index,
             std::string const &search_term) -> std::vector<int>
 {
     LlgConstraintInit init;
