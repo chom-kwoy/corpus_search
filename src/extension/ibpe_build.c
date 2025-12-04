@@ -181,12 +181,16 @@ static bool ibpe_push_record(Relation indexRelation,
                              Page page,
                              uint16 page_flags,
                              BlockNumber *prev_blkno, // 0 if no previous block exists
-                             char *record,
+                             char *record,            // force flush if NULL
                              int rec_size,
                              uint16 *out_offset)
 {
-    /* Try to add next item to cached page */
-    bool success = ibpe_add_record_to_page(page, record, rec_size, out_offset);
+    bool success = false;
+
+    if (record) {
+        /* Try to add next item to cached page */
+        success = ibpe_add_record_to_page(page, record, rec_size, out_offset);
+    }
 
     if (!success) {
         /* Cached page is full, flush it out and make a new one */
@@ -211,14 +215,18 @@ static bool ibpe_push_record(Relation indexRelation,
 
         ibpe_init_page(page, page_flags);
 
-        if (!ibpe_add_record_to_page(page, record, rec_size, out_offset)) {
-            /* We shouldn't be here since we're inserting to the empty page */
-            elog(ERROR, "could not add new bloom tuple to empty page");
+        if (record) {
+            if (!ibpe_add_record_to_page(page, record, rec_size, out_offset)) {
+                /* We shouldn't be here since we're inserting to the empty page */
+                elog(ERROR, "could not add new ibpe tuple to empty page");
+            }
         }
 
+        // flushed previous page
         return true;
     }
 
+    // did not flush
     return false;
 }
 
@@ -234,6 +242,7 @@ typedef struct
     Relation indexRelation;
     int64 indtuples; // total number of tuples indexed
     int num_indexed_tokens;
+    int num_indexed_records;
     tokenizer tok;
 
     // interface to the C++ backend
@@ -310,11 +319,13 @@ static void ibpe_flush_records_to_link(ibpe_build_state *state)
         ptr_record.blkno = state->sid_page_prevno;
         ptr_record.offset = state->records_to_link[i].offset;
 
-        elog(NOTICE,
-             "Established link: token %d -> (blkno=%d, offset=%d)",
-             ptr_record.token,
-             ptr_record.blkno,
-             ptr_record.offset);
+        if (state->num_indexed_records < 5) {
+            elog(NOTICE,
+                 "Established link: token %d -> (blkno=%d, offset=%d)",
+                 ptr_record.token,
+                 ptr_record.blkno,
+                 ptr_record.offset);
+        }
 
         ibpe_push_record(state->indexRelation,
                          state->ptr_page.data,
@@ -323,6 +334,8 @@ static void ibpe_flush_records_to_link(ibpe_build_state *state)
                          (char *) &ptr_record,
                          sizeof(ibpe_ptr_record),
                          NULL);
+
+        state->num_indexed_records += 1;
     }
 
     // clear buffer
@@ -336,12 +349,12 @@ static void ibpe_index_builder_iterate(void *user_data,
 {
     ibpe_build_state *state = user_data;
 
-    elog(NOTICE,
-         "token %d -> Array[%d]{(sid=%d,pos=%d), ...}",
-         token,
-         n_sentids,
-         p_sentids[0].sent_id,
-         p_sentids[0].pos);
+    // elog(NOTICE,
+    //      "token %d -> Array[%d]{(sid=%d,pos=%d), ...}",
+    //      token,
+    //      n_sentids,
+    //      p_sentids[0].sent_id,
+    //      p_sentids[0].pos);
 
     uint16 offset;
 
@@ -369,6 +382,8 @@ static void ibpe_index_builder_iterate(void *user_data,
             ibpe_flush_records_to_link(state);
         }
     }
+
+    state->num_indexed_tokens += 1;
 }
 
 /* build new index */
@@ -388,6 +403,7 @@ IndexBuildResult *ibpe_build(Relation heapRelation, Relation indexRelation, Inde
     build_state.indexRelation = indexRelation;
     build_state.indtuples = 0;
     build_state.num_indexed_tokens = 0;
+    build_state.num_indexed_records = 0;
     build_state.tok = cache->tok;
 
     build_state.builder = create_index_builder();
@@ -422,12 +438,25 @@ IndexBuildResult *ibpe_build(Relation heapRelation, Relation indexRelation, Inde
     // Populate index using result from builder
     index_builder_iterate(build_state.builder, ibpe_index_builder_iterate, &build_state);
 
-    // flush remaining pages
+    // force flush remaining pages
     if (build_state.n_records_to_link > 0) {
-        build_state.sid_page_prevno = ibpe_flush_page(indexRelation, build_state.sid_page.data);
+        ibpe_push_record(indexRelation,
+                         build_state.sid_page.data,
+                         IBPE_PAGE_SID,
+                         &build_state.sid_page_prevno,
+                         NULL, // force flush
+                         0,
+                         NULL);
+
         ibpe_flush_records_to_link(&build_state);
     }
-    ibpe_flush_page(indexRelation, build_state.ptr_page.data);
+    ibpe_push_record(indexRelation,
+                     build_state.ptr_page.data,
+                     IBPE_PAGE_PTR,
+                     &build_state.ptr_page_prevno,
+                     NULL, // force flush
+                     0,
+                     NULL);
 
     // free memory
     destroy_index_builder(build_state.builder);

@@ -42,9 +42,11 @@ void ibpe_relcache_reload_index(ibpe_relcache *cache,
 {
     elog(NOTICE, "Loading index from disk");
     if (!meta->index_built) {
-        elog(NOTICE, "Index not built yet");
+        elog(NOTICE, "Index not built yet. Exiting");
         return;
     }
+
+    elog(NOTICE, "metadata: %d tokens found in index", meta->num_indexed_tokens);
 
     cache->num_indexed_tokens = meta->num_indexed_tokens;
     cache->token_sid_map = MemoryContextAlloc(indexRelation->rd_indexcxt,
@@ -52,13 +54,17 @@ void ibpe_relcache_reload_index(ibpe_relcache *cache,
 
     BufferAccessStrategy bas = GetAccessStrategy(BAS_BULKREAD);
 
-    Buffer ptr_page_buf = ReadBufferExtended(indexRelation, MAIN_FORKNUM, 1, RBM_NORMAL, bas);
-    LockBuffer(ptr_page_buf, BUFFER_LOCK_SHARE);
-
-    Page page = BufferGetPage(ptr_page_buf);
-
     int tokens_added = 0;
+
+    BlockNumber blkno = 1; // start of ptr pages
     for (;;) {
+        elog(NOTICE, "Reading page #%d / %d", blkno, RelationGetNumberOfBlocks(indexRelation));
+
+        Buffer ptr_page_buf = ReadBufferExtended(indexRelation, MAIN_FORKNUM, blkno, RBM_NORMAL, bas);
+        LockBuffer(ptr_page_buf, BUFFER_LOCK_SHARE);
+
+        Page page = BufferGetPage(ptr_page_buf);
+
         ibpe_opaque_data *opaque = ibpe_get_opaque(page);
         Assert(opaque->ibpe_page_id == IBPE_PAGE_ID);
         Assert((opaque->flags & IBPE_PAGE_PTR) != 0);
@@ -68,11 +74,13 @@ void ibpe_relcache_reload_index(ibpe_relcache *cache,
         while (p < PageGetContents(page) + opaque->data_len) {
             ibpe_ptr_record *rec = (ibpe_ptr_record *) p;
 
-            elog(NOTICE,
-                 "Read: token %d -> (blkno=%d, offset=%d)",
-                 rec->token,
-                 rec->blkno,
-                 rec->offset);
+            if (tokens_added < 5) {
+                elog(NOTICE,
+                     "Read mapping: token %d -> (blkno=%d, offset=%d)",
+                     rec->token,
+                     rec->blkno,
+                     rec->offset);
+            }
 
             cache->token_sid_map[tokens_added++] = (ibpe_ptr_record){
                 rec->token,
@@ -83,22 +91,22 @@ void ibpe_relcache_reload_index(ibpe_relcache *cache,
             p += sizeof(ibpe_ptr_record);
         }
 
-        BlockNumber next_blkno = opaque->next_blkno;
-        if (next_blkno == InvalidBlockNumber) {
+        // follow pointer to next page
+        elog(NOTICE, "Got next blkno = %u", opaque->next_blkno);
+
+        if (opaque->next_blkno == InvalidBlockNumber) {
+            UnlockReleaseBuffer(ptr_page_buf);
             break;
         }
 
+        blkno = opaque->next_blkno;
+
         UnlockReleaseBuffer(ptr_page_buf);
-
-        elog(NOTICE, "Reading page #%d", next_blkno);
-
-        ptr_page_buf = ReadBufferExtended(indexRelation, MAIN_FORKNUM, next_blkno, RBM_NORMAL, bas);
-        LockBuffer(ptr_page_buf, BUFFER_LOCK_SHARE);
-
-        page = BufferGetPage(ptr_page_buf);
     }
 
-    UnlockReleaseBuffer(ptr_page_buf);
+    elog(NOTICE, "Reading End. Added %d tokens", tokens_added);
+
+    Assert(tokens_added == meta->num_indexed_tokens);
 }
 
 static ibpe_relcache *ibpe_relcache_fill(Relation indexRelation, ibpe_metapage_data *meta)
