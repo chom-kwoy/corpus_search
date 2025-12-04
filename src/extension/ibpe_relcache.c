@@ -41,6 +41,10 @@ void ibpe_relcache_reload_index(ibpe_relcache *cache,
                                 ibpe_metapage_data *meta)
 {
     elog(NOTICE, "Loading index from disk");
+    if (!meta->index_built) {
+        elog(NOTICE, "Index not built yet");
+        return;
+    }
 
     cache->num_indexed_tokens = meta->num_indexed_tokens;
     cache->token_sid_map = MemoryContextAlloc(indexRelation->rd_indexcxt,
@@ -118,9 +122,7 @@ static ibpe_relcache *ibpe_relcache_fill(Relation indexRelation, ibpe_metapage_d
     MemoryContextRegisterResetCallback(indexRelation->rd_indexcxt, cb);
 
     // Load index if already built
-    if (meta->index_built) {
-        ibpe_relcache_reload_index(cache, indexRelation, meta);
-    }
+    ibpe_relcache_reload_index(cache, indexRelation, meta);
 
     return cache;
 }

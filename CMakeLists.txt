@@ -79,15 +79,18 @@ set_property(TARGET tokenizers_cpp PROPERTY POSITION_INDEPENDENT_CODE ON)
 target_link_libraries(lib_corpus_search PRIVATE tokenizers_cpp)
 
 ## utf8-cpp header-only library
-CPMAddPackage(
-    NAME utfcpp
-    GITHUB_REPOSITORY "nemtrif/utfcpp"
+FetchContent_Declare(
+    utf8cpp
+    GIT_REPOSITORY https://github.com/nemtrif/utfcpp
     GIT_TAG 70795627871251f6c57f952e667303a2381c2fc5
+    SOURCE_SUBDIR "ignore"  # ignore CMakeLists.txt
+    EXCLUDE_FROM_ALL
 )
-add_library(utfcpp INTERFACE)
-target_include_directories(utfcpp INTERFACE "${utfcpp_SOURCE_DIR}/source")
+FetchContent_MakeAvailable(utf8cpp)
+add_library(utf8cpp INTERFACE)
+target_include_directories(utf8cpp INTERFACE "${utf8cpp_SOURCE_DIR}/source")
 
-target_link_libraries(lib_corpus_search PRIVATE utfcpp)
+target_link_libraries(lib_corpus_search PRIVATE utf8cpp)
 
 ## msgpack-cxx
 CPMAddPackage(
