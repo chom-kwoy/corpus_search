@@ -1,11 +1,9 @@
 #include "searcher.hpp"
 
 #include "index_builder.hpp"
-#include "utils.hpp"
+#include "tokenizer.hpp"
 
-#include <fstream>
 #include <queue>
-
 #include <fmt/chrono.h>
 #include <fmt/core.h>
 #include <fmt/ranges.h>
@@ -17,6 +15,8 @@
 #include <utf8.h>
 
 namespace corpus_search {
+
+using candset = std::optional<std::vector<index_entry>>;
 
 namespace { // static linkage
 
@@ -31,60 +31,6 @@ auto get_sent_ids(std::vector<index_entry> const &self) -> std::vector<int>
         last_sent_id = entry.sent_id;
     }
     return output;
-}
-
-auto load_file(std::string const &path) -> std::unordered_map<int, std::vector<int>>
-{
-    // Open the file in binary mode, at the end to get the size
-    auto file = std::ifstream(path, std::ios::binary);
-
-    if (!file) {
-        throw std::runtime_error("Error reading file.");
-    }
-
-    auto unpacker = msgpack::unpacker();
-
-    std::unordered_map<int, std::vector<int>> result;
-
-    int load_count = 0;
-
-    constexpr int try_read_size = 16 * 1024 * 1024;
-    while (file.good()) {
-        unpacker.reserve_buffer(try_read_size);
-
-        auto n_bytes_read = file.readsome(unpacker.buffer(), try_read_size);
-
-        if (n_bytes_read == 0) {
-            file.peek(); // Check if end-of-file is reached
-        }
-
-        if (n_bytes_read > 0) {
-            unpacker.buffer_consumed(n_bytes_read);
-
-            msgpack::object_handle handle;
-            while (unpacker.next(handle)) {
-                if (load_count % 100'000 == 0) {
-                    fmt::println("Loaded {} sentences...", load_count);
-                    std::fflush(stdout);
-                }
-
-                auto map = std::unordered_map<std::string, msgpack::object>(handle.get().convert());
-                int tok_id = int(map.at("id").convert());
-                auto sent_ids = std::vector<int>(map.at("tokens").convert());
-                sent_ids.shrink_to_fit();
-                result[tok_id] = std::move(sent_ids);
-
-                load_count += 1;
-            }
-
-        } else if (file.eof()) {
-            break;
-        } else if (file.fail()) {
-            throw std::runtime_error("Error reading file.");
-        }
-    }
-
-    return result;
 }
 
 static auto to_bitset(std::uint32_t const *mask, int len) -> boost::dynamic_bitset<>
@@ -118,74 +64,6 @@ static auto nonzero_pos(boost::dynamic_bitset<> const &mask) -> std::vector<int>
     } while (i != mask.npos);
     return result;
 }
-} // namespace
-
-searcher::searcher(std::string const &tokenized_sentences_path,
-                   std::string const &tokenizer_json_path)
-    : tok(tokenizer_json_path, true)
-{
-    // load index
-    fmt::println("Loading sentences...");
-    std::fflush(stdout);
-
-    sentences = load_file(tokenized_sentences_path);
-
-    std::size_t max_len = 0;
-    int max_id = 0;
-    for (auto const &[sent_id, sentence] : sentences) {
-        max_len = std::max(max_len, sentence.size());
-        max_id = std::max(max_id, sent_id);
-    }
-
-    fmt::println("Loaded {} sentences. Max sentence length = {}, Max id = {}",
-                 sentences.size(),
-                 max_len,
-                 max_id);
-    std::fflush(stdout);
-
-    // make index
-    fmt::println("Making index...");
-    std::fflush(stdout);
-
-    tok_to_sid = make_index(sentences);
-
-    int bytes = 0;
-    for (auto const &[tok, entries] : tok_to_sid) {
-        bytes += sizeof(tok) + entries.size() * sizeof(index_entry);
-    }
-
-    fmt::println("Made index. Index size = {} MB", bytes / 1'000'000);
-    std::fflush(stdout);
-
-    auto nchars_to_tid = std::unordered_map<int, std::vector<int>>{};
-    for (auto const &[tid, token] : tok.get_tid_to_token()) {
-        if (tid < 2) { // FIXME: special token detection
-            // special token; skip
-            continue;
-        }
-        if ((token[0] & 0b1100'0000) == 0b1000'0000) {
-            // continuation byte; skip
-            continue;
-        }
-        auto length = utf8::utf8to32(utf8::replace_invalid(token)).size();
-        nchars_to_tid[length].push_back(tid);
-    }
-
-    for (int n = 0; n <= tok.MAX_TOKEN_LENGTH; ++n) {
-        auto bitmask = boost::dynamic_bitset<>(tok.VOCAB_SIZE);
-        for (int gt_n = n + 1; gt_n <= tok.MAX_TOKEN_LENGTH; ++gt_n) {
-            for (auto tid : nchars_to_tid.at(gt_n)) {
-                bitmask.set(tid);
-            }
-        }
-        gt_n_char_masks[n] = bitmask;
-    }
-
-    fmt::println("Done.");
-    std::fflush(stdout);
-}
-
-namespace {
 
 auto followed_by(std::vector<index_entry> const &self,
                  candset const &other) -> std::vector<index_entry>
@@ -292,14 +170,15 @@ auto merge_sorted_lists(std::vector<pointer_or_object> const &cand_lists) -> std
 
     return result;
 }
-} // namespace
 
-auto searcher::generate_cands(LlgMatcher *matcher,
-                              int pad_size,
-                              RE2 const &search_regex,
-                              std::unordered_map<std::string, candset> &cache,
-                              std::string const &prev_prefix,
-                              int level) const -> std::vector<index_entry>
+auto generate_cands(tokenizer const &tok,
+                    index_builder const &index,
+                    LlgMatcher *matcher,
+                    int pad_size,
+                    RE2 const &search_regex,
+                    std::unordered_map<std::string, candset> &cache,
+                    std::string const &prev_prefix = "",
+                    int level = 0) -> std::vector<index_entry>
 {
     if (llg_matcher_compute_mask(matcher)) {
         throw std::runtime_error("Error computing mask");
@@ -308,7 +187,7 @@ auto searcher::generate_cands(LlgMatcher *matcher,
     auto bitmask = to_bitset(llg_matcher_get_mask(matcher), tok.VOCAB_SIZE);
 
     if (level == 0) {
-        bitmask &= gt_n_char_masks.at(pad_size);
+        bitmask &= tok.gt_n_char_mask(pad_size);
     }
 
     auto next_tokens = nonzero_pos(bitmask);
@@ -328,11 +207,11 @@ auto searcher::generate_cands(LlgMatcher *matcher,
             cur_prefix = cur_prefix.substr(it - cur_prefix.begin());
         }
 
-        if (tok_to_sid.count(token) == 0) {
+        if (index.get_index().count(token) == 0) {
             continue;
         }
 
-        auto const &matches = tok_to_sid.at(token);
+        auto const &matches = index.get_index().at(token);
 
         if (cache.count(cur_prefix) > 0) {
             auto const &cands = cache.at(cur_prefix);
@@ -351,7 +230,14 @@ auto searcher::generate_cands(LlgMatcher *matcher,
             throw std::runtime_error("llg_matcher_consume_token returned error");
         }
 
-        auto cands = generate_cands(matcher, pad_size, search_regex, cache, cur_prefix, level + 1);
+        auto cands = generate_cands(tok,
+                                    index,
+                                    matcher,
+                                    pad_size,
+                                    search_regex,
+                                    cache,
+                                    cur_prefix,
+                                    level + 1);
 
         if (llg_matcher_rollback(matcher, 1)) {
             throw std::runtime_error("llg_matcher_rollback returned error");
@@ -370,7 +256,11 @@ auto searcher::generate_cands(LlgMatcher *matcher,
     return result;
 }
 
-auto searcher::search(std::string const &search_term) const -> std::vector<int>
+} // namespace
+
+auto search(tokenizer const &tok,
+            index_builder const &index,
+            std::string const &search_term) -> std::vector<int>
 {
     LlgConstraintInit init;
     llg_constraint_init_set_defaults(&init, tok.get_ll_tokenizer());
@@ -398,7 +288,7 @@ auto searcher::search(std::string const &search_term) const -> std::vector<int>
             throw std::runtime_error("Error constructing constraint");
         }
 
-        auto cands = generate_cands(m.get(), pad_size, RE2(search_regex), cache);
+        auto cands = generate_cands(tok, index, m.get(), pad_size, RE2(search_regex), cache);
 
         cand_lists.push_back(std::move(cands));
     }

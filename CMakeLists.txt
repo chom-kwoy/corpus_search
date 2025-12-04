@@ -20,8 +20,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 add_library(lib_corpus_search
-    src/utils.cpp
-    src/utils.hpp
+    src/tokenizer.cpp
+    src/tokenizer.hpp
     src/searcher.cpp
     src/searcher.hpp
     src/index_builder.cpp

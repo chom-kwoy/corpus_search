@@ -13,4 +13,4 @@ COMMENT ON ACCESS METHOD ibpe IS 'inverted BPE index access method';
 -- Opclasses
 CREATE OPERATOR CLASS text_ops
 DEFAULT FOR TYPE text USING ibpe AS
-    OPERATOR 1 ~ (text, text);
+    OPERATOR 1 ~(text, text);

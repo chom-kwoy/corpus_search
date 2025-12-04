@@ -6,19 +6,28 @@
 
 #include "searcher.hpp"
 
-auto s() -> corpus_search::searcher& {
-    static auto s = corpus_search::searcher(
-        "/home/park/devel/mk-tokenizer/tokenized_sentences.msgpack",
-        "/home/park/devel/mk-tokenizer/bpe_tokenizer/tokenizer.json");
-    return s;
+static auto get_tok() -> corpus_search::tokenizer &
+{
+    static auto t = corpus_search::tokenizer{
+        "/home/park/devel/mk-tokenizer/bpe_tokenizer/tokenizer.json",
+        true,
+    };
+    return t;
 }
 
-auto measure_time(corpus_search::searcher const &s, std::string search_term) -> std::vector<int>
+static auto get_index() -> corpus_search::index_builder &
+{
+    static auto idx = corpus_search::index_builder::from_file(
+        "/home/park/devel/mk-tokenizer/tokenized_sentences.msgpack");
+    return idx;
+}
+
+static auto measure_time(std::string search_term) -> std::vector<int>
 {
     using namespace std::chrono;
     auto start_time = high_resolution_clock::now();
 
-    auto result = s.search(search_term);
+    auto result = search(get_tok(), get_index(), search_term);
 
     auto end_time = high_resolution_clock::now();
 
@@ -39,18 +48,18 @@ auto measure_time(corpus_search::searcher const &s, std::string search_term) -> 
 
 TEST(Searcher, SearchStringSimple)
 {
-    EXPECT_EQ(measure_time(s(), "z").size(), 20'621);
-    EXPECT_EQ(measure_time(s(), "o").size(), 1'286'797);
-    EXPECT_EQ(measure_time(s(), "ho").size(), 811'047);
-    EXPECT_EQ(measure_time(s(), "TT").size(), 0);
+    EXPECT_EQ(measure_time("z").size(), 20'621);
+    EXPECT_EQ(measure_time("o").size(), 1'286'797);
+    EXPECT_EQ(measure_time("ho").size(), 811'047);
+    EXPECT_EQ(measure_time("TT").size(), 0);
 }
 
 TEST(Searcher, SearchStringHard)
 {
-    EXPECT_EQ(measure_time(s(), "hoxni").size(), 94'307);
-    EXPECT_EQ(measure_time(s(), "sixtaxsoxngixta").size(), 14);
-    EXPECT_EQ(measure_time(s(), "ngixta").size(), 2'472);
-    EXPECT_EQ(measure_time(s(), "kaxnanxho").size(), 719);
-    EXPECT_EQ(measure_time(s(), "oxnon").size(), 74'953);
-    EXPECT_EQ(measure_time(s(), "國家").size(), 296);
+    EXPECT_EQ(measure_time("hoxni").size(), 94'307);
+    EXPECT_EQ(measure_time("sixtaxsoxngixta").size(), 14);
+    EXPECT_EQ(measure_time("ngixta").size(), 2'472);
+    EXPECT_EQ(measure_time("kaxnanxho").size(), 719);
+    EXPECT_EQ(measure_time("oxnon").size(), 74'953);
+    EXPECT_EQ(measure_time("國家").size(), 296);
 }

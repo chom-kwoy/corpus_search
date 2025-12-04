@@ -21,7 +21,7 @@ typedef struct
 {
     tokenizer tok;
 
-    int num_indexed_tokens;
+    int vocab_size;
     ibpe_ptr_record *token_sid_map;
 } ibpe_relcache;
 

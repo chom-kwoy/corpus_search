@@ -314,10 +314,11 @@ static void ibpe_flush_records_to_link(ibpe_build_state *state)
         return; // nothing to flush
     }
     for (int i = 0; i < state->n_records_to_link; ++i) {
-        ibpe_ptr_record ptr_record;
-        ptr_record.token = state->records_to_link[i].token;
-        ptr_record.blkno = state->sid_page_prevno;
-        ptr_record.offset = state->records_to_link[i].offset;
+        ibpe_ptr_record ptr_record = {
+            .token = state->records_to_link[i].token,
+            .blkno = state->sid_page_prevno,
+            .offset = state->records_to_link[i].offset,
+        };
 
         if (state->num_indexed_records < 5) {
             elog(NOTICE,

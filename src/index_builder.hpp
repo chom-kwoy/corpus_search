@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <span>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -48,13 +49,12 @@ class index_builder
 
 public:
     index_builder() = default;
+    static index_builder from_file(std::string const &tokenized_sentences_path);
+
     void add_sentence(int sent_id, std::span<const int> tokens);
-    auto finalize_index() -> std::unordered_map<int, std::vector<index_entry>>;
+    void finalize_index();
     auto get_index() const -> std::unordered_map<int, std::vector<index_entry>> const &;
 };
-
-auto make_index(std::unordered_map<int, std::vector<int>> sentences)
-    -> std::unordered_map<int, std::vector<index_entry>>;
 
 } // namespace corpus_search
 

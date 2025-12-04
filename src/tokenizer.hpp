@@ -1,10 +1,12 @@
-#ifndef UTILS_H
-#define UTILS_H
+#ifndef TOKENIZER_H
+#define TOKENIZER_H
 
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+#include <boost/dynamic_bitset.hpp>
 
 // forward declarations
 class LlgTokenizer;
@@ -19,7 +21,9 @@ class tokenizer
 {
     LlgTokenizer *ll_tokenizer = nullptr;
     std::unique_ptr<tokenizers::Tokenizer> tok_tokenizer;
+
     std::unordered_map<int, std::string> tid_to_token;
+    std::unordered_map<int, boost::dynamic_bitset<>> gt_n_char_masks;
 
     auto llg_tokenize(std::string_view string) const -> std::vector<std::uint32_t>;
 
@@ -38,6 +42,10 @@ public:
     {
         return tid_to_token;
     }
+    auto gt_n_char_mask(int n) const -> boost::dynamic_bitset<> const &
+    {
+        return gt_n_char_masks.at(n);
+    }
 
     auto tokenize(std::string_view string) const -> std::vector<int>;
 };
@@ -48,4 +56,4 @@ auto to_unicode(std::string_view s) -> std::string;
 
 } // namespace corpus_search
 
-#endif // UTILS_H
+#endif // TOKENIZER_H

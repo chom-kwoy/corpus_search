@@ -1,4 +1,4 @@
-#include "utils.hpp"
+#include "tokenizer.hpp"
 
 #include <filesystem>
 #include <fstream>
@@ -84,6 +84,30 @@ tokenizer::tokenizer(std::string tokenizer_json_path, bool verbose)
         fmt::println("Loaded llg tokenizer. \"{}\" -> [{}]",
                      sample_input,
                      fmt::join(llg_tokenize(sample_input), ", "));
+    }
+
+    auto nchars_to_tid = std::unordered_map<int, std::vector<int>>{};
+    for (auto const &[tid, token] : tid_to_token) {
+        if (tid < 2) { // FIXME: special token detection
+            // special token; skip
+            continue;
+        }
+        if ((token[0] & 0b1100'0000) == 0b1000'0000) {
+            // continuation byte; skip
+            continue;
+        }
+        auto length = utf8::utf8to32(utf8::replace_invalid(token)).size();
+        nchars_to_tid[length].push_back(tid);
+    }
+
+    for (int n = 0; n <= MAX_TOKEN_LENGTH; ++n) {
+        auto bitmask = boost::dynamic_bitset<>(VOCAB_SIZE);
+        for (int gt_n = n + 1; gt_n <= MAX_TOKEN_LENGTH; ++gt_n) {
+            for (auto tid : nchars_to_tid.at(gt_n)) {
+                bitmask.set(tid);
+            }
+        }
+        gt_n_char_masks[n] = bitmask;
     }
 }
 

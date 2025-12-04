@@ -13,6 +13,7 @@
 #include <storage/indexfsm.h>
 #include <utils/builtins.h>
 #include <utils/rel.h>
+#include <utils/selfuncs.h>
 
 PG_MODULE_MAGIC_EXT(.name = "ibpe", .version = PG_VERSION);
 
@@ -182,8 +183,31 @@ void ibpe_costestimate(struct PlannerInfo *root,
                        double *indexCorrelation,
                        double *indexPages)
 {
-    // TODO
-    elog(ERROR, "ibpe_costestimate: Not implemented");
+    IndexOptInfo *index = path->indexinfo;
+    GenericCosts costs = {0};
+
+    /* We have to visit all index tuples anyway */
+    costs.numIndexTuples = index->tuples;
+
+    elog(NOTICE, "ibpe_costestimate called with tuples=%lf", index->tuples);
+
+    /* Use generic estimate */
+    genericcostestimate(root, path, loop_count, &costs);
+
+    elog(NOTICE,
+         "indexStartupCost=%lf, indexTotalCost=%lf, indexSelectivity=%lf, "
+         "indexCorrelation=%lf, numIndexPages=%lf",
+         costs.indexStartupCost,
+         costs.indexTotalCost,
+         costs.indexSelectivity,
+         costs.indexCorrelation,
+         costs.numIndexPages);
+
+    *indexStartupCost = costs.indexStartupCost;
+    *indexTotalCost = costs.indexTotalCost;
+    *indexSelectivity = costs.indexSelectivity;
+    *indexCorrelation = costs.indexCorrelation;
+    *indexPages = costs.numIndexPages;
 }
 
 /* validate definition of an opclass for this AM */

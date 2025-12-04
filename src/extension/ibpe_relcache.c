@@ -48,13 +48,14 @@ void ibpe_relcache_reload_index(ibpe_relcache *cache,
 
     elog(NOTICE, "metadata: %d tokens found in index", meta->num_indexed_tokens);
 
-    cache->num_indexed_tokens = meta->num_indexed_tokens;
+    cache->vocab_size = tokenizer_get_vocab_size(cache->tok);
     cache->token_sid_map = MemoryContextAlloc(indexRelation->rd_indexcxt,
-                                              sizeof(ibpe_ptr_record) * meta->num_indexed_tokens);
+                                              sizeof(ibpe_ptr_record) * cache->vocab_size);
 
     BufferAccessStrategy bas = GetAccessStrategy(BAS_BULKREAD);
 
-    int tokens_added = 0;
+    int token_recs_added = 0;
+    int tok_id = 0;
 
     BlockNumber blkno = 1; // start of ptr pages
     for (;;) {
@@ -74,7 +75,7 @@ void ibpe_relcache_reload_index(ibpe_relcache *cache,
         while (p < PageGetContents(page) + opaque->data_len) {
             ibpe_ptr_record *rec = (ibpe_ptr_record *) p;
 
-            if (tokens_added < 5) {
+            if (token_recs_added < 5) {
                 elog(NOTICE,
                      "Read mapping: token %d -> (blkno=%d, offset=%d)",
                      rec->token,
@@ -82,11 +83,21 @@ void ibpe_relcache_reload_index(ibpe_relcache *cache,
                      rec->offset);
             }
 
-            cache->token_sid_map[tokens_added++] = (ibpe_ptr_record){
-                rec->token,
-                rec->blkno,
-                rec->offset,
+            for (; tok_id < rec->token; tok_id++) {
+                // fill missing tokens with invalid pointers
+                cache->token_sid_map[tok_id] = (ibpe_ptr_record){
+                    .token = tok_id,
+                    .blkno = InvalidBlockNumber,
+                    .offset = -1,
+                };
             };
+
+            cache->token_sid_map[tok_id++] = (ibpe_ptr_record){
+                .token = rec->token,
+                .blkno = rec->blkno,
+                .offset = rec->offset,
+            };
+            token_recs_added += 1;
 
             p += sizeof(ibpe_ptr_record);
         }
@@ -104,9 +115,18 @@ void ibpe_relcache_reload_index(ibpe_relcache *cache,
         UnlockReleaseBuffer(ptr_page_buf);
     }
 
-    elog(NOTICE, "Reading End. Added %d tokens", tokens_added);
+    for (; tok_id < cache->vocab_size; tok_id++) {
+        // fill missing tokens with invalid pointers
+        cache->token_sid_map[tok_id] = (ibpe_ptr_record){
+            .token = tok_id,
+            .blkno = InvalidBlockNumber,
+            .offset = -1,
+        };
+    }
 
-    Assert(tokens_added == meta->num_indexed_tokens);
+    elog(NOTICE, "Reading End. Added %d tokens", token_recs_added);
+
+    Assert(token_recs_added == meta->num_indexed_tokens);
 }
 
 static ibpe_relcache *ibpe_relcache_fill(Relation indexRelation, ibpe_metapage_data *meta)

@@ -9,10 +9,10 @@ extern "C" {
 #define noexcept
 #endif
 
-struct index_builder_data;
+// index builder
 typedef struct index_builder_data *index_builder;
 
-struct index_entry
+struct __attribute__((__may_alias__)) index_entry
 {
     enum {
         POS_BITS = 11,
@@ -38,12 +38,21 @@ void index_builder_iterate(index_builder builder,
                            index_builder_iterate_function callback,
                            void *user_data) noexcept;
 
-struct tokenizer_data;
+// tokenizer
 typedef struct tokenizer_data *tokenizer;
 
 tokenizer create_tokenizer(char const *tokenizer_path, char *err_msg, int err_len) noexcept;
 void destroy_tokenizer(tokenizer tok) noexcept;
 int tokenizer_tokenize(tokenizer tok, char const *string, int *out_tokens, size_t maxlen) noexcept;
+int tokenizer_get_vocab_size(tokenizer tok) noexcept;
+
+// searcher
+typedef struct sentid_vec_data *sentid_vec;
+
+sentid_vec search_corpus(tokenizer tok, index_builder index, char const *search_term) noexcept;
+int const *sentid_vec_get_data(sentid_vec vec) noexcept;
+int sentid_vec_get_size(sentid_vec vec) noexcept;
+void destroy_sentid_vec(sentid_vec vec) noexcept;
 
 #ifdef __cplusplus
 }

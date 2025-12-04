@@ -6,6 +6,8 @@
 #include <access/amapi.h>
 #include <fmgr.h>
 
+#define IBPE_STRATEGY_REGEX 1
+
 typedef struct
 {
     int32 vl_len_;      // varlena header
