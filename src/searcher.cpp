@@ -161,7 +161,7 @@ auto generate_cands(tokenizer const &tok,
         throw std::runtime_error("Error computing mask");
     }
 
-    auto bitmask = to_bitset(llg_matcher_get_mask(matcher), tok.VOCAB_SIZE);
+    auto bitmask = to_bitset(llg_matcher_get_mask(matcher), tok.vocab_size());
 
     if (level == 0) {
         bitmask &= tok.gt_n_char_mask(pad_size);
@@ -173,7 +173,7 @@ auto generate_cands(tokenizer const &tok,
     auto cand_lists = std::vector<pointer_or_object>{};
 
     for (int token : next_tokens) {
-        assert(token != EOS_TOKEN_ID);
+        assert(token != tok.EOS_TOKEN_ID);
 
         auto cur_prefix = prev_prefix + tok.get_tid_to_token().at(token);
         if (level == 0) {
@@ -247,6 +247,7 @@ auto search(tokenizer const &tok,
     };
 
     auto search_regex = RE2::QuoteMeta(search_term);
+    fmt::println("Regex = {}", search_regex);
 
     auto cand_lists = std::vector<pointer_or_object>{};
 
@@ -255,8 +256,6 @@ auto search(tokenizer const &tok,
         fmt::println("======= pad size = {} ========", pad_size);
 
         auto regex = fmt::format(".{{{}}}{}.*", pad_size, search_regex);
-        fmt::println("Regex = {}", regex);
-        std::fflush(stdout);
 
         auto m = std::unique_ptr<LlgMatcher, LlgMatcherDeleter>(
             llg_new_matcher(&init, "regex", regex.c_str()));

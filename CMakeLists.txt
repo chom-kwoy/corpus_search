@@ -32,8 +32,8 @@ set_property(TARGET lib_corpus_search PROPERTY POSITION_INDEPENDENT_CODE ON)
 target_include_directories(lib_corpus_search INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/src/")
 
 target_compile_definitions(lib_corpus_search PUBLIC
-    CORPUS_SEARCH_INDEX_ENTRY_BITS=32
-    CORPUS_SEARCH_POSITION_BITS=11
+    CORPUS_SEARCH_INDEX_ENTRY_BITS=64
+    CORPUS_SEARCH_POSITION_BITS=12
 )
 
 ########### Link External libraries ###########

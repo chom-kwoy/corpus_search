@@ -48,6 +48,7 @@ auto load_file(std::string const &path) -> std::unordered_map<sentid_t, std::vec
                 auto sent_id = sentid_t(map.at("id").convert());
                 auto tokens = std::vector<int>(map.at("tokens").convert());
                 tokens.shrink_to_fit();
+
                 result[sent_id] = std::move(tokens);
 
                 load_count += 1;

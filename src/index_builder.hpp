@@ -12,10 +12,10 @@ namespace corpus_search {
 
 struct index_entry
 {
-    static constexpr int POS_BITS = CORPUS_SEARCH_POSITION_BITS;
-    static constexpr int MAX_POS = (1 << POS_BITS) - 1;
     static constexpr int SENTID_BITS = CORPUS_SEARCH_SENTID_BITS;
-    static constexpr int MAX_SENTID = (1 << SENTID_BITS) - 1;
+    static constexpr sentid_t MAX_SENTID = (1uLL << SENTID_BITS) - 1;
+    static constexpr int POS_BITS = CORPUS_SEARCH_POSITION_BITS;
+    static constexpr tokpos_t MAX_POS = (1 << POS_BITS) - 1;
 
     static_assert(MAX_POS >= 2'000);
     static_assert(MAX_SENTID >= 2'000'000);
@@ -36,10 +36,16 @@ struct index_entry
         return std::tie(sent_id, pos) != std::tie(other.sent_id, other.pos);
     }
 
-    constexpr auto hash() const -> index_entry_hash_t { return (sent_id << POS_BITS) | pos; }
+    constexpr auto hash() const -> index_entry_hash_t
+    {
+        return (static_cast<index_entry_hash_t>(sent_id) << POS_BITS) | pos;
+    }
     static constexpr auto from_hash(index_entry_hash_t hash) -> index_entry
     {
-        return {hash >> POS_BITS, hash};
+        return {
+            static_cast<sentid_t>(hash >> POS_BITS),
+            static_cast<tokpos_t>(hash & MAX_POS),
+        };
     }
 };
 

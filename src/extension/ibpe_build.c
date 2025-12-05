@@ -282,7 +282,7 @@ static void ibpe_build_callback(Relation indexRelation,
 
     char *string = TextDatumGetCString(values[0]);
 
-    int tokens[2048] = {};
+    int tokens[4096] = {};
     int n_tokens = tokenizer_tokenize(build_state->tok, string, tokens, lengthof(tokens));
     if (n_tokens > lengthof(tokens)) {
         elog(ERROR, "String exceeds %zu tokens", lengthof(tokens));
@@ -301,11 +301,10 @@ static void ibpe_build_callback(Relation indexRelation,
              tokens[2]);
     }
 
-    // FIXME: allow larger blkid
-    if (tid->ip_blkid.bi_hi != 0) {
-        elog(ERROR, "Block ID too large");
-    }
-    int sent_id = (tid->ip_blkid.bi_lo << 16) | tid->ip_posid;
+    sentid_t sent_id = 0;
+    sent_id |= ((sentid_t) tid->ip_blkid.bi_hi << 32);
+    sent_id |= ((sentid_t) tid->ip_blkid.bi_lo << 16);
+    sent_id |= (sentid_t) tid->ip_posid;
 
     index_builder_add_sentence(build_state->builder, sent_id, tokens, n_tokens);
 

@@ -72,16 +72,12 @@ static int ibpe_access_index(void *user_data, int token, index_entry *data, int 
     int num_elems = *((int *) begin);
     begin += sizeof(int);
 
-    if (data) {
-        elog(NOTICE, "Found %d matches for token %d", num_elems, token);
-    }
-
     for (int i = 0; i < num_elems; ++i) {
         if (i >= num_entries) {
             break;
         }
 
-        if (begin + sizeof(index_entry) >= end) {
+        if (begin + sizeof(index_entry) > end) {
             // follow pointer to next page blkno
             int next_blkno = ibpe_get_opaque(page)->next_blkno;
             if (next_blkno == InvalidBlockNumber) {
@@ -163,24 +159,20 @@ int64 ibpe_getbitmap(IndexScanDesc scan, TIDBitmap *tbm)
 
     FreeAccessStrategy(bas);
 
-    int const *data = sentid_vec_get_data(results);
+    sentid_t const *data = sentid_vec_get_data(results);
     int size = sentid_vec_get_size(results);
 
     elog(NOTICE, "ibpe_getbitmap: Found %d results", size);
-    if (size > 0) {
-        elog(NOTICE, "data[0] = %d", data[0]);
-    }
 
     // fill tbm with results
     for (int i = 0; i < size; ++i) {
         ItemPointerData tid;
 
-        // FIXME: allow larger blkid
-        tid.ip_blkid.bi_hi = 0;
+        tid.ip_blkid.bi_hi = (data[i] >> 32) & 0xFFFF;
         tid.ip_blkid.bi_lo = (data[i] >> 16) & 0xFFFF;
         tid.ip_posid = data[i] & 0xFFFF;
 
-        tbm_add_tuples(tbm, &tid, 1, true);
+        tbm_add_tuples(tbm, &tid, 1, false);
     }
 
     destroy_sentid_vec(results);

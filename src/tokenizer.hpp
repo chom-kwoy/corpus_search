@@ -30,11 +30,12 @@ class tokenizer
 public:
     // TODO: un-hardcode these
     static constexpr int EOS_TOKEN_ID = 1;
-    static constexpr int VOCAB_SIZE = 65536;
     static constexpr int MAX_TOKEN_LENGTH = 8; // in unicode characters
 
     tokenizer(std::string tokenizer_json_path, bool verbose);
     ~tokenizer();
+
+    auto vocab_size() const -> int;
 
     auto get_tok_tokenizer() const -> tokenizers::Tokenizer * { return tok_tokenizer.get(); }
     auto get_ll_tokenizer() const -> LlgTokenizer * { return ll_tokenizer; }

@@ -101,7 +101,7 @@ tokenizer::tokenizer(std::string tokenizer_json_path, bool verbose)
     }
 
     for (int n = 0; n <= MAX_TOKEN_LENGTH; ++n) {
-        auto bitmask = boost::dynamic_bitset<>(VOCAB_SIZE);
+        auto bitmask = boost::dynamic_bitset<>(vocab_size());
         for (int gt_n = n + 1; gt_n <= MAX_TOKEN_LENGTH; ++gt_n) {
             for (auto tid : nchars_to_tid.at(gt_n)) {
                 bitmask.set(tid);
@@ -116,6 +116,11 @@ tokenizer::~tokenizer()
     if (ll_tokenizer) {
         llg_free_tokenizer(ll_tokenizer);
     }
+}
+
+auto tokenizer::vocab_size() const -> int
+{
+    return tok_tokenizer->GetVocabSize();
 }
 
 auto tokenizer::llg_tokenize(std::string_view string) const -> std::vector<uint32_t>

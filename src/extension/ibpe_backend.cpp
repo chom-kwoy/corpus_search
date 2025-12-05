@@ -94,7 +94,7 @@ auto tokenizer_tokenize(tokenizer tok,
 
 auto tokenizer_get_vocab_size(tokenizer tok) noexcept -> int
 {
-    return reinterpret_cast<corpus_search::tokenizer *>(tok)->VOCAB_SIZE;
+    return reinterpret_cast<corpus_search::tokenizer *>(tok)->vocab_size();
 }
 
 auto search_corpus(tokenizer tok,

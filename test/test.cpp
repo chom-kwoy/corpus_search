@@ -9,7 +9,7 @@
 static auto get_tok() -> corpus_search::tokenizer &
 {
     static auto t = corpus_search::tokenizer{
-        "/home/park/devel/mk-tokenizer/bpe_tokenizer/tokenizer.json",
+        "/home/park/devel/mk-tokenizer/bpe_tokenizer-12/tokenizer.json",
         true,
     };
     return t;
@@ -18,7 +18,7 @@ static auto get_tok() -> corpus_search::tokenizer &
 static auto get_index() -> corpus_search::index_builder &
 {
     static auto idx = corpus_search::index_builder::from_file(
-        "/home/park/devel/mk-tokenizer/tokenized_sentences.msgpack");
+        "/home/park/devel/mk-tokenizer/tokenized_sentences12.msgpack");
     return idx;
 }
 
@@ -57,6 +57,8 @@ static auto measure_time(std::string search_term) -> std::vector<sentid_t>
 
 TEST(Searcher, SearchStringSimple)
 {
+    get_tok(), get_index();
+
     EXPECT_EQ(measure_time("z").size(), 20'621);
     EXPECT_EQ(measure_time("o").size(), 1'286'797);
     EXPECT_EQ(measure_time("ho").size(), 811'047);
@@ -65,6 +67,8 @@ TEST(Searcher, SearchStringSimple)
 
 TEST(Searcher, SearchStringHard)
 {
+    get_tok(), get_index();
+
     EXPECT_EQ(measure_time("hoxni").size(), 94'307);
     EXPECT_EQ(measure_time("sixtaxsoxngixta").size(), 14);
     EXPECT_EQ(measure_time("ngixta").size(), 2'472);

@@ -62,7 +62,7 @@ Datum ibpe_handler(PG_FUNCTION_ARGS)
     amroutine->aminsertcleanup = NULL;
     amroutine->ambulkdelete = ibpe_bulkdelete;
     amroutine->amvacuumcleanup = ibpe_vacuumcleanup;
-    amroutine->amcanreturn = NULL;
+    amroutine->amcanreturn = ibpe_canreturn;
     amroutine->amcostestimate = ibpe_costestimate;
     amroutine->amgettreeheight = NULL;
     amroutine->amoptions = ibpe_options;
@@ -154,6 +154,13 @@ bytea *ibpe_options(Datum reloptions, bool validate)
     }
 
     return (bytea *) rdopts;
+}
+
+/* Check whether the index can support index-only scans on the given column */
+bool ibpe_canreturn(Relation indexRelation, int attno)
+{
+    elog(NOTICE, "ibpe_canreturn called with %d", attno);
+    return true;
 }
 
 /* bulk delete */
