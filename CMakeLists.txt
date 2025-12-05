@@ -58,28 +58,27 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(json)
 set_property(TARGET nlohmann_json PROPERTY POSITION_INDEPENDENT_CODE ON)
 
-target_link_libraries(lib_corpus_search PRIVATE nlohmann_json::nlohmann_json)
+target_link_libraries(lib_corpus_search PUBLIC nlohmann_json::nlohmann_json)
 
 ## re2 (version 2023-11-01)
-FetchContent_Declare(
+CPMAddPackage(
     re2
-    GIT_REPOSITORY https://github.com/google/re2
-    GIT_TAG        "2023-11-01"
-    EXCLUDE_FROM_ALL
+    GITHUB_REPOSITORY "google/re2"
+    GIT_TAG           "2023-11-01"
+    OPTIONS           RE2_USE_ICU=ON
+    EXCLUDE_FROM_ALL  ON
 )
-FetchContent_MakeAvailable(re2)
 set_property(TARGET re2 PROPERTY POSITION_INDEPENDENT_CODE ON)
 
 target_link_libraries(lib_corpus_search PRIVATE re2::re2)
 
 ## tokenizers-cpp
-FetchContent_Declare(
+CPMAddPackage(
     tokenizers_cpp
-    GIT_REPOSITORY https://github.com/mlc-ai/tokenizers-cpp
-    GIT_TAG        55d53aa38dc8df7d9c8bd9ed50907e82ae83ce66
-    EXCLUDE_FROM_ALL
+    GITHUB_REPOSITORY "mlc-ai/tokenizers-cpp"
+    GIT_TAG           55d53aa38dc8df7d9c8bd9ed50907e82ae83ce66
+    EXCLUDE_FROM_ALL  ON
 )
-FetchContent_MakeAvailable(tokenizers_cpp)
 set_property(TARGET tokenizers_cpp PROPERTY POSITION_INDEPENDENT_CODE ON)
 
 target_link_libraries(lib_corpus_search PRIVATE tokenizers_cpp)
@@ -103,7 +102,7 @@ CPMAddPackage(
     NAME msgpack-cxx
     GITHUB_REPOSITORY "msgpack/msgpack-c"
     GIT_TAG b0d379a6f29af7dd65423ff78a94de8948f01bd8
-    EXCLUDE_FROM_ALL
+    EXCLUDE_FROM_ALL ON
 )
 
 target_link_libraries(lib_corpus_search PUBLIC msgpack-cxx)

@@ -19,12 +19,13 @@ static void ibpe_fill_metapage(Relation indexRelation, Page metaPage)
     ibpe_options_data *opts = (ibpe_options_data *) indexRelation->rd_options;
     if (!opts) {
         elog(ERROR,
-             "tokenizer path not set. "
+             "Tokenizer path not set. "
              "Please specify `WITH (tokenizer_path = '<path to tokenizer.json>').`");
     }
 
     char const *tok_path = GET_STRING_RELOPTION(opts, tokenizer_path);
-    elog(NOTICE, "Got tokenizer path = %s", tok_path);
+    char const *mappings = GET_STRING_RELOPTION(opts, normalize_mappings);
+    elog(NOTICE, "Got tokenizer path = %s, mappings = %s", tok_path, mappings);
 
     PageInit(metaPage, BLCKSZ, sizeof(ibpe_opaque_data));
 
@@ -38,6 +39,13 @@ static void ibpe_fill_metapage(Relation indexRelation, Page metaPage)
     memset(metadata, 0, sizeof(ibpe_metapage_data));
     metadata->magickNumber = IBPE_MAGICK_NUMBER;
     strncpy(metadata->tokenizer_path, tok_path, TOKENIZER_PATH_MAXLEN);
+    metadata->n_normalize_mappings = parse_normalize_mappings(mappings,
+                                                              metadata->normalize_mappings,
+                                                              NORMALIZE_MAPPINGS_MAXLEN);
+    if (metadata->n_normalize_mappings < 0
+        || metadata->n_normalize_mappings > NORMALIZE_MAPPINGS_MAXLEN) {
+        elog(ERROR, "Invalid JSON in normalize_mappings");
+    }
     metadata->index_built = false;
     metadata->num_indexed_tokens = 0;
 
@@ -244,6 +252,8 @@ typedef struct
     int num_indexed_tokens;
     int num_indexed_records;
     tokenizer tok;
+    int n_normalize_mappings;
+    char (*normalize_mappings)[2];
 
     // interface to the C++ backend
     index_builder builder;
@@ -282,24 +292,41 @@ static void ibpe_build_callback(Relation indexRelation,
 
     char *string = TextDatumGetCString(values[0]);
 
-    int tokens[4096] = {};
-    int n_tokens = tokenizer_tokenize(build_state->tok, string, tokens, lengthof(tokens));
-    if (n_tokens > lengthof(tokens)) {
-        elog(ERROR, "String exceeds %zu tokens", lengthof(tokens));
+    // normalize string (replace '.' with 'x', etc)
+    int len = strlen(string);
+    char *normalized_string = palloc0(len + 1);
+    for (int i = 0; i < len; ++i) {
+        char ch = string[i];
+        for (int j = 0; j < build_state->n_normalize_mappings; ++j) {
+            if (ch == build_state->normalize_mappings[j][0]) {
+                ch = build_state->normalize_mappings[j][1];
+                break;
+            }
+        }
+        normalized_string[i] = ch;
+    }
+
+    int bufsz = 256;
+    int *tokens = palloc0(bufsz * sizeof(int));
+    int n_tokens = tokenizer_tokenize(build_state->tok, normalized_string, tokens, bufsz);
+    if (n_tokens > bufsz) {
+        // try again
+        pfree(tokens);
+        tokens = palloc0(n_tokens * sizeof(int));
+        tokenizer_tokenize(build_state->tok, normalized_string, tokens, n_tokens);
     }
 
     if (build_state->indtuples < 5) {
         elog(NOTICE,
-             "tid=%d/%d/%d, text=%s, isnull=%d, toks=[%d, %d, %d, ...]",
+             "tid=%d/%d/%d, text=%s, ntoks=%d",
              tid->ip_blkid.bi_hi,
              tid->ip_blkid.bi_lo,
              tid->ip_posid,
-             string,
-             isnull[0],
-             tokens[0],
-             tokens[1],
-             tokens[2]);
+             normalized_string,
+             n_tokens);
     }
+
+    pfree(normalized_string);
 
     sentid_t sent_id = 0;
     sent_id |= ((sentid_t) tid->ip_blkid.bi_hi << 32);
@@ -307,6 +334,8 @@ static void ibpe_build_callback(Relation indexRelation,
     sent_id |= (sentid_t) tid->ip_posid;
 
     index_builder_add_sentence(build_state->builder, sent_id, tokens, n_tokens);
+
+    pfree(tokens);
 
     build_state->indtuples++;
 }
@@ -409,6 +438,8 @@ IndexBuildResult *ibpe_build(Relation heapRelation, Relation indexRelation, Inde
     build_state.num_indexed_tokens = 0;
     build_state.num_indexed_records = 0;
     build_state.tok = cache->tok;
+    build_state.n_normalize_mappings = cache->n_normalize_mappings;
+    build_state.normalize_mappings = cache->normalize_mappings;
 
     build_state.builder = create_index_builder();
     if (!build_state.builder) {

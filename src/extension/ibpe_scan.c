@@ -156,6 +156,12 @@ int64 ibpe_getbitmap(IndexScanDesc scan, TIDBitmap *tbm)
         .func = ibpe_access_index,
     };
     sentid_vec results = search_corpus(cache->tok, callback, search_term);
+    if (!results) {
+        elog(WARNING, "Search failed. Returning 0 results");
+
+        FreeAccessStrategy(bas);
+        return 0;
+    }
 
     FreeAccessStrategy(bas);
 

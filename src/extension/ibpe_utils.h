@@ -12,6 +12,7 @@ typedef struct
 {
     int32 vl_len_;      // varlena header
     int tokenizer_path; // string option
+    int normalize_mappings; // string option
 } ibpe_options_data;
 
 // opaque is a special area at the end of all index pages
@@ -33,10 +34,13 @@ typedef struct __attribute__((packed))
 
 // data structure stored in the meta page (page #0 of the index relation)
 #define TOKENIZER_PATH_MAXLEN 255
+#define NORMALIZE_MAPPINGS_MAXLEN 8
 typedef struct
 {
     uint32 magickNumber; // must equal IBPE_MAGICK_NUMBER
     char tokenizer_path[TOKENIZER_PATH_MAXLEN + 1];
+    int n_normalize_mappings;
+    char normalize_mappings[NORMALIZE_MAPPINGS_MAXLEN][2];
     bool index_built;
     int num_indexed_tokens;
 } ibpe_metapage_data;

@@ -4,7 +4,9 @@
 
 #include <algorithm>
 #include <fmt/core.h>
+#include <nlohmann/json.hpp>
 #include <type_traits>
+#include <unordered_map>
 
 static_assert(std::is_layout_compatible_v<index_entry, corpus_search::index_entry>);
 static_assert(std::is_standard_layout_v<index_entry>);
@@ -60,10 +62,19 @@ void index_builder_iterate(index_builder builder,
     }
 }
 
-auto create_tokenizer(char const *tokenizer_path, char *err_msg, int err_len) noexcept -> tokenizer
+auto create_tokenizer(char const *tokenizer_path,
+                      char normalize_mappings[][2],
+                      int n_normalize_mappings,
+                      char *err_msg,
+                      int err_len) noexcept -> tokenizer
 {
     try {
-        return reinterpret_cast<tokenizer>(new corpus_search::tokenizer(tokenizer_path, true));
+        std::unordered_map<char, char> mapping;
+        for (int i = 0; i < n_normalize_mappings; ++i) {
+            mapping[normalize_mappings[i][0]] = normalize_mappings[i][1];
+        }
+        return reinterpret_cast<tokenizer>(
+            new corpus_search::tokenizer(tokenizer_path, mapping, true));
     } catch (std::exception const &e) {
         fmt::println("Error: {}", e.what());
         if (err_msg) {
@@ -139,4 +150,33 @@ auto sentid_vec_get_size(sentid_vec vec) noexcept -> size_t
 void destroy_sentid_vec(sentid_vec vec) noexcept
 {
     delete reinterpret_cast<std::vector<sentid_t> *>(vec);
+}
+
+auto parse_normalize_mappings(char const *json_str,
+                              char mappings[][2],
+                              int max_mappings) noexcept -> int
+{
+    try {
+        auto json = nlohmann::json::parse(json_str);
+        std::unordered_map<std::string, std::string> parsed = json;
+        int count = 0;
+        for (auto [k, v] : parsed) {
+            if (count >= max_mappings) {
+                break;
+            }
+            if (k.size() != 1 || v.size() != 1) {
+                throw std::runtime_error("element is not a single char");
+            }
+            mappings[count][0] = k[0];
+            mappings[count][1] = v[0];
+            count++;
+        }
+        return parsed.size();
+    } catch (std::exception const &e) {
+        fmt::println(stderr, "ERROR parsing json '{}': {}", json_str, e.what());
+        std::fflush(stderr);
+        return -1;
+    } catch (...) {
+        return -1;
+    }
 }

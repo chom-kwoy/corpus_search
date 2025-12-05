@@ -7,7 +7,10 @@ corpus_search is a library for efficient corpus search.
 
 ```sql
 create extension corpussearch;
-create index my_ibpe_index on sentences using ibpe (text) with (tokenizer_path = '/var/lib/postgresql/tokenizer.json');
+create index my_ibpe_index on sentences using ibpe (text) with (
+    tokenizer_path = '/var/lib/postgresql/tokenizer.json',
+    normalize_mappings = '{".": "x", "/": "Z", "\\": "X", "`": "C"}'
+);
 SELECT pg_size_pretty(pg_relation_size('my_ibpe_index'));
 
 -- with ibpe index
@@ -17,10 +20,10 @@ SET enable_seqscan = off; explain analyze select text from sentences where text 
 SET max_parallel_workers_per_gather = 0; SET enable_seqscan = on; explain analyze select text from sentences where text ~ 'ho';
 
 -- with ibpe index
-SET enable_seqscan = off; explain analyze select text from sentences where text ~ 'sixtaxsoxngixta';
+SET enable_seqscan = off; explain analyze select text from sentences where text ~ 'si\.ta\.so\.ngi\.ta';
 
 -- without index
-SET max_parallel_workers_per_gather = 0; SET enable_seqscan = on; explain analyze select text from sentences where text ~ 'sixtaxsoxngixta';
+SET max_parallel_workers_per_gather = 0; SET enable_seqscan = on; explain analyze select text from sentences where text ~ 'si\.ta\.so\.ngi\.ta';
 
 drop extension corpussearch cascade;
 ```

@@ -10,6 +10,7 @@ static auto get_tok() -> corpus_search::tokenizer &
 {
     static auto t = corpus_search::tokenizer{
         "/home/park/devel/mk-tokenizer/bpe_tokenizer-12/tokenizer.json",
+        {{'.', 'x'}, {'/', 'Z'}, {'\\', 'X'}, {'`', 'C'}},
         true,
     };
     return t;
@@ -60,8 +61,8 @@ TEST(Searcher, SearchStringSimple)
     get_tok(), get_index();
 
     EXPECT_EQ(measure_time("z").size(), 20'621);
-    EXPECT_EQ(measure_time("o").size(), 1'286'797);
-    EXPECT_EQ(measure_time("ho").size(), 811'047);
+    EXPECT_EQ(measure_time("o").size(), 1'286'817);
+    EXPECT_EQ(measure_time("ho").size(), 811'085);
     EXPECT_EQ(measure_time("TT").size(), 0);
 }
 
@@ -69,10 +70,27 @@ TEST(Searcher, SearchStringHard)
 {
     get_tok(), get_index();
 
-    EXPECT_EQ(measure_time("hoxni").size(), 94'307);
-    EXPECT_EQ(measure_time("sixtaxsoxngixta").size(), 14);
-    EXPECT_EQ(measure_time("ngixta").size(), 2'472);
-    EXPECT_EQ(measure_time("kaxnanxho").size(), 719);
-    EXPECT_EQ(measure_time("oxnon").size(), 74'953);
+    EXPECT_EQ(measure_time("ho\\.ni").size(), 94'307);
+    EXPECT_EQ(measure_time("si\\.ta\\.so\\.ngi\\.ta").size(), 14);
+    EXPECT_EQ(measure_time("ngi\\.ta").size(), 2'472);
+    EXPECT_EQ(measure_time("ka\\.nan\\.ho").size(), 719);
+    EXPECT_EQ(measure_time("o\\.non").size(), 74'953);
     EXPECT_EQ(measure_time("國家").size(), 296);
+}
+
+TEST(Searcher, SearchRegexEasy)
+{
+    get_tok(), get_index();
+
+    EXPECT_EQ(measure_time("cho\\.c[ou]\\.ni").size(), 168);
+    EXPECT_EQ(measure_time("w[ou]\\.toy").size(), 44'782);
+}
+
+#define HANJA_RE "[\u4E00-\u9FCC\u3400-\u4DB5]"
+
+TEST(Searcher, SearchRegexHard)
+{
+    get_tok(), get_index();
+
+    EXPECT_EQ(measure_time(HANJA_RE "`i").size(), 61'261);
 }

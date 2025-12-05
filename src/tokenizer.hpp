@@ -7,6 +7,7 @@
 #include <vector>
 
 #include <boost/dynamic_bitset.hpp>
+#include <nlohmann/json_fwd.hpp>
 
 // forward declarations
 class LlgTokenizer;
@@ -25,14 +26,22 @@ class tokenizer
     std::unordered_map<int, std::string> tid_to_token;
     std::unordered_map<int, boost::dynamic_bitset<>> gt_n_char_masks;
 
+    std::unordered_map<char, char> normalize_mapping;
+    std::unordered_map<char, char> inv_normalize_mapping;
+
     auto llg_tokenize(std::string_view string) const -> std::vector<std::uint32_t>;
+
+    auto load_llg_tokenizer(tokenizers::Tokenizer *tok_tokenizer,
+                            nlohmann::json json) -> LlgTokenizer *;
 
 public:
     // TODO: un-hardcode these
     static constexpr int EOS_TOKEN_ID = 1;
     static constexpr int MAX_TOKEN_LENGTH = 8; // in unicode characters
 
-    tokenizer(std::string tokenizer_json_path, bool verbose);
+    tokenizer(std::string tokenizer_json_path,
+              std::unordered_map<char, char> normalize_mapping,
+              bool verbose);
     ~tokenizer();
 
     auto vocab_size() const -> int;
@@ -47,6 +56,13 @@ public:
     {
         return gt_n_char_masks.at(n);
     }
+    auto get_normalize_mapping() const -> std::unordered_map<char, char> const &
+    {
+        return normalize_mapping;
+    }
+
+    auto normalize(std::string_view string) const -> std::string;
+    auto unnormalize(std::string_view string) const -> std::string;
 
     auto tokenize(std::string_view string) const -> std::vector<int>;
 };

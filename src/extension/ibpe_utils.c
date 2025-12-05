@@ -1,4 +1,5 @@
 #include "ibpe_utils.h"
+#include "ibpe_backend.h"
 #include "ibpe_build.h"
 #include "ibpe_scan.h"
 
@@ -108,7 +109,7 @@ int ibpe_page_get_free_space(Page page)
 
 // index options
 static relopt_kind ibpe_relopt_kind;
-static relopt_parse_elt ibpe_relopt_tab[1];
+static relopt_parse_elt ibpe_relopt_tab[2];
 
 void _PG_init(void)
 {
@@ -126,6 +127,17 @@ void _PG_init(void)
     ibpe_relopt_tab[0].optname = "tokenizer_path";
     ibpe_relopt_tab[0].opttype = RELOPT_TYPE_STRING;
     ibpe_relopt_tab[0].offset = offsetof(ibpe_options_data, tokenizer_path);
+
+    // normalize mappings
+    add_string_reloption(ibpe_relopt_kind,
+                         "normalize_mappings",
+                         "Normalize mappings in JSON format",
+                         "{}",
+                         NULL,
+                         AccessExclusiveLock);
+    ibpe_relopt_tab[1].optname = "normalize_mappings";
+    ibpe_relopt_tab[1].opttype = RELOPT_TYPE_STRING;
+    ibpe_relopt_tab[1].offset = offsetof(ibpe_options_data, normalize_mappings);
 }
 
 /* parse index reloptions */
@@ -140,7 +152,8 @@ bytea *ibpe_options(Datum reloptions, bool validate)
                                                  lengthof(ibpe_relopt_tab));
 
     char const *tok_path = GET_STRING_RELOPTION(rdopts, tokenizer_path);
-    elog(NOTICE, "Tokenizer path = %s", tok_path);
+    char const *mappings = GET_STRING_RELOPTION(rdopts, normalize_mappings);
+    elog(NOTICE, "Tokenizer path = %s, normalize mappings = %s", tok_path, mappings);
 
     if (validate) {
         if (strcmp(tok_path, "") == 0) {
@@ -150,6 +163,9 @@ bytea *ibpe_options(Datum reloptions, bool validate)
         }
         if (strlen(tok_path) > TOKENIZER_PATH_MAXLEN) {
             elog(ERROR, "Tokenizer path too long");
+        }
+        if (parse_normalize_mappings(mappings, NULL, 0) < 0) {
+            elog(ERROR, "Malformed JSON in normalize_mappings");
         }
     }
 

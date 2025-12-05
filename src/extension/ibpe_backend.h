@@ -43,7 +43,11 @@ void index_builder_iterate(index_builder builder,
 // tokenizer
 typedef struct tokenizer_data *tokenizer;
 
-tokenizer create_tokenizer(char const *tokenizer_path, char *err_msg, int err_len) noexcept;
+tokenizer create_tokenizer(char const *tokenizer_path,
+                           char normalize_mappings[][2],
+                           int n_normalize_mappings,
+                           char *err_msg,
+                           int err_len) noexcept;
 void destroy_tokenizer(tokenizer tok) noexcept;
 int tokenizer_tokenize(tokenizer tok, char const *string, int *out_tokens, size_t maxlen) noexcept;
 int tokenizer_get_vocab_size(tokenizer tok) noexcept;
@@ -64,6 +68,9 @@ sentid_vec search_corpus(tokenizer tok,
 sentid_t const *sentid_vec_get_data(sentid_vec vec) noexcept;
 size_t sentid_vec_get_size(sentid_vec vec) noexcept;
 void destroy_sentid_vec(sentid_vec vec) noexcept;
+
+// json parser
+int parse_normalize_mappings(char const *json_str, char mappings[][2], int max_mappings) noexcept;
 
 #ifdef __cplusplus
 }

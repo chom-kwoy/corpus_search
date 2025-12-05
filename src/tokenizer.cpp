@@ -14,6 +14,40 @@
 
 namespace corpus_search {
 
+static auto load_json_file(std::string const &path) -> nlohmann::json
+{
+    // Check if file exists
+    if (!std::filesystem::exists(std::filesystem::path(path))) {
+        throw std::runtime_error(fmt::format("File does not exist at {}", path));
+    }
+
+    // Read file
+    auto file = std::ifstream(path);
+    if (!file.is_open()) {
+        throw std::runtime_error(fmt::format("Error opening file: {}", path));
+    }
+
+    return nlohmann::json::parse((std::stringstream{} << file.rdbuf()).str());
+}
+
+static auto replace_chars(std::string_view string,
+                          std::unordered_map<char, char> const &mapping,
+                          bool *was_replaced = nullptr) -> std::string
+{
+    bool is_replaced = false;
+    auto new_string = std::string(string);
+    for (int i = 0; i < string.size(); ++i) {
+        if (mapping.contains(string[i])) {
+            new_string[i] = mapping.at(string[i]);
+            is_replaced = true;
+        }
+    }
+    if (was_replaced) {
+        *was_replaced = is_replaced;
+    }
+    return new_string;
+}
+
 static auto call_tokenize(const void *user_data,
                           const uint8_t *bytes,
                           size_t bytes_len,
@@ -22,9 +56,10 @@ static auto call_tokenize(const void *user_data,
 {
     auto t = static_cast<tokenizer const *>(user_data);
 
-    // handle incomplete utf8
-    auto encoded = to_unicode(std::string(bytes, bytes + bytes_len));
-    auto result = t->get_tok_tokenizer()->Encode(encoded);
+    auto input = std::string(bytes, bytes + bytes_len);
+    input = replace_chars(input, t->get_normalize_mapping());
+    input = to_unicode(input);
+    auto result = t->get_tok_tokenizer()->Encode(input);
 
     for (int i = 0; i < std::min(result.size(), output_tokens_len); ++i) {
         output_tokens[i] = result[i];
@@ -33,57 +68,93 @@ static auto call_tokenize(const void *user_data,
     return result.size();
 }
 
-tokenizer::tokenizer(std::string tokenizer_json_path, bool verbose)
+auto tokenizer::load_llg_tokenizer(tokenizers::Tokenizer *tok_tokenizer,
+                                   nlohmann::json json) -> LlgTokenizer *
 {
-    if (!std::filesystem::exists(std::filesystem::path(tokenizer_json_path))) {
-        throw std::runtime_error(
-            fmt::format("Tokenizer file does not exist at {}", tokenizer_json_path));
+    // replace vocab with unnormalized tokens
+    auto &vocab = json["model"]["vocab"];
+    std::unordered_map<std::string, int> new_vocab;
+    for (auto &[tok_str, tok_id] : vocab.items()) {
+        bool is_replaced;
+        auto new_tok_str = replace_chars(tok_str, inv_normalize_mapping, &is_replaced);
+        if (!new_vocab.contains(new_tok_str) || is_replaced) {
+            new_vocab[new_tok_str] = tok_id;
+        }
+    }
+    vocab = new_vocab;
+
+    // replace merges
+    auto &merges = json["model"]["merges"];
+    std::vector<std::vector<std::string>> new_merges = merges;
+    for (auto &merge : new_merges) {
+        merge.at(0) = replace_chars(merge.at(0), inv_normalize_mapping);
+        merge.at(1) = replace_chars(merge.at(1), inv_normalize_mapping);
+    }
+    merges = new_merges;
+
+    auto const modified_json = json.dump();
+
+    LlgTokenizerInit tok_init = {};
+    tok_init.tok_eos = tokenizer::EOS_TOKEN_ID;
+    tok_init.use_approximate_greedy_tokenize_fn = false;
+    tok_init.tokenize_user_data = this;
+    tok_init.tokenize_fn = call_tokenize;
+    tok_init.tokenizer_json = modified_json.c_str();
+
+    char error_buf[256];
+    LlgTokenizer *ll_tokenizer = llg_new_tokenizer(&tok_init, error_buf, sizeof(error_buf));
+    if (ll_tokenizer == nullptr) {
+        throw std::runtime_error(fmt::format("Error creating tokenizer: {}", error_buf));
     }
 
-    auto file = std::ifstream(tokenizer_json_path);
-    if (!file.is_open()) {
-        throw std::runtime_error(
-            fmt::format("Error opening tokenizer file: {}", tokenizer_json_path));
+    return ll_tokenizer;
+}
+
+auto tokenizer::normalize(std::string_view string) const -> std::string
+{
+    return replace_chars(string, normalize_mapping);
+}
+
+auto tokenizer::unnormalize(std::string_view string) const -> std::string
+{
+    return replace_chars(string, inv_normalize_mapping);
+}
+
+tokenizer::tokenizer(std::string tokenizer_json_path,
+                     std::unordered_map<char, char> normalize_mapping,
+                     bool verbose)
+    : normalize_mapping(std::move(normalize_mapping))
+{
+    for (auto [from, to] : this->normalize_mapping) {
+        inv_normalize_mapping[to] = from;
     }
-    std::string tokenizer_json = (std::stringstream{} << file.rdbuf()).str();
+
+    auto const json = load_json_file(tokenizer_json_path);
 
     // Load HF Tokenizers tokenizer
-    auto tokenizer_data = nlohmann::json::parse(tokenizer_json);
-
-    auto vocab = tokenizer_data["model"]["vocab"];
-    for (auto const &[tok_str, tok_id] : vocab.items()) {
-        tid_to_token[tok_id.get<int>()] = to_bytes(tok_str);
-    }
-
-    tokenizer_data["pre_tokenizer"] = nullptr;
-    tok_tokenizer = tokenizers::Tokenizer::FromBlobJSON(tokenizer_data.dump());
-
-    const char sample_input[] = "kaxnanxho ngixta 國家";
+    auto json_for_tok = json;
+    json_for_tok["pre_tokenizer"] = nullptr; // remove unicode conversion to allow partial characters
+    tok_tokenizer = tokenizers::Tokenizer::FromBlobJSON(json_for_tok.dump());
     if (verbose) {
+        const char sample_input[] = "x Z X C kaxnanxho ngixta 國家";
         fmt::println("Loaded hf tokenizer. \"{}\" -> [{}]",
                      sample_input,
                      fmt::join(tokenize(sample_input), ", "));
     }
 
     // Load LLG tokenizer
-    LlgTokenizerInit tok_init = {};
-
-    tok_init.tok_eos = EOS_TOKEN_ID;
-    tok_init.use_approximate_greedy_tokenize_fn = false;
-    tok_init.tokenize_user_data = this;
-    tok_init.tokenize_fn = call_tokenize;
-    tok_init.tokenizer_json = tokenizer_json.c_str();
-
-    char error_buf[1024];
-    ll_tokenizer = llg_new_tokenizer(&tok_init, error_buf, sizeof(error_buf));
-    if (ll_tokenizer == nullptr) {
-        throw std::runtime_error(fmt::format("Error creating tokenizer: {}", error_buf));
-    }
-
+    ll_tokenizer = load_llg_tokenizer(tok_tokenizer.get(), json);
     if (verbose) {
+        const char sample_input[] = ". / \\ ` ka.nan.ho ngi.ta 國家";
         fmt::println("Loaded llg tokenizer. \"{}\" -> [{}]",
                      sample_input,
                      fmt::join(llg_tokenize(sample_input), ", "));
+    }
+
+    // Do other preprocessing stuff
+    auto vocab = json["model"]["vocab"];
+    for (auto const &[tok_str, tok_id] : vocab.items()) {
+        tid_to_token[tok_id.get<int>()] = to_bytes(tok_str);
     }
 
     auto nchars_to_tid = std::unordered_map<int, std::vector<int>>{};
@@ -125,14 +196,18 @@ auto tokenizer::vocab_size() const -> int
 
 auto tokenizer::llg_tokenize(std::string_view string) const -> std::vector<uint32_t>
 {
-    auto sample_input_bytes = std::vector<std::uint8_t>(std::begin(string), std::end(string));
-    auto tokens = std::vector<std::uint32_t>(1024);
+    // figure out the size first
     auto num_tokens = llg_tokenize_bytes(ll_tokenizer,
-                                         sample_input_bytes.data(),
-                                         sample_input_bytes.size(),
-                                         tokens.data(),
-                                         tokens.size());
-    tokens.resize(num_tokens);
+                                         reinterpret_cast<std::uint8_t const *>(string.data()),
+                                         string.size(),
+                                         nullptr,
+                                         0);
+    auto tokens = std::vector<std::uint32_t>(num_tokens);
+    llg_tokenize_bytes(ll_tokenizer,
+                       reinterpret_cast<std::uint8_t const *>(string.data()),
+                       string.size(),
+                       tokens.data(),
+                       tokens.size());
     return tokens;
 }
 
@@ -193,7 +268,11 @@ auto to_bytes(std::string_view s) -> std::string
          it != utf8::iterator(s.end(), s.begin(), s.end());
          ++it) {
         int code_point = *it;
-        result.push_back(UNICODE_TO_BYTES.at(code_point));
+        if (UNICODE_TO_BYTES.contains(code_point)) {
+            result.push_back(UNICODE_TO_BYTES.at(code_point));
+        } else {
+            result.push_back(code_point);
+        }
     }
     return result;
 }
@@ -247,7 +326,12 @@ auto to_unicode(std::string_view s) -> std::string
     };
     std::u32string result;
     for (char byte : s) {
-        result.push_back(BYTES_TO_UNICODE.at(byte & 0xff));
+        int b = byte & 0xff;
+        if (BYTES_TO_UNICODE.contains(b)) {
+            result.push_back(BYTES_TO_UNICODE.at(b));
+        } else {
+            result.push_back(b);
+        }
     }
     return utf8::utf32to8(result);
 }

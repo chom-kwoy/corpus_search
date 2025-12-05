@@ -175,7 +175,8 @@ auto generate_cands(tokenizer const &tok,
     for (int token : next_tokens) {
         assert(token != tok.EOS_TOKEN_ID);
 
-        auto cur_prefix = prev_prefix + tok.get_tid_to_token().at(token);
+        auto token_str = tok.unnormalize(tok.get_tid_to_token().at(token));
+        auto cur_prefix = prev_prefix + token_str;
         if (level == 0) {
             auto it = cur_prefix.begin();
             for (int i = 0; i < pad_size; ++i) {
@@ -246,8 +247,8 @@ auto search(tokenizer const &tok,
         void operator()(LlgMatcher *p) const { llg_free_matcher(p); }
     };
 
-    auto search_regex = RE2::QuoteMeta(search_term);
-    fmt::println("Regex = {}", search_regex);
+    fmt::println("Regex = {}", search_term);
+    std::fflush(stdout);
 
     auto cand_lists = std::vector<pointer_or_object>{};
 
@@ -255,7 +256,7 @@ auto search(tokenizer const &tok,
     for (int pad_size = 0; pad_size < tok.MAX_TOKEN_LENGTH; ++pad_size) {
         fmt::println("======= pad size = {} ========", pad_size);
 
-        auto regex = fmt::format(".{{{}}}{}.*", pad_size, search_regex);
+        auto regex = fmt::format(".{{{}}}{}.*", pad_size, search_term);
 
         auto m = std::unique_ptr<LlgMatcher, LlgMatcherDeleter>(
             llg_new_matcher(&init, "regex", regex.c_str()));
@@ -263,7 +264,7 @@ auto search(tokenizer const &tok,
             throw std::runtime_error("Error constructing constraint");
         }
 
-        auto cands = generate_cands(tok, index, m.get(), pad_size, RE2(search_regex), cache);
+        auto cands = generate_cands(tok, index, m.get(), pad_size, RE2(search_term), cache);
 
         cand_lists.push_back(std::move(cands));
     }
