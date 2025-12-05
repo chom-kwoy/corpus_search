@@ -59,7 +59,7 @@ static auto call_tokenize(const void *user_data,
     auto input = std::string(bytes, bytes + bytes_len);
     input = replace_chars(input, t->get_normalize_mapping());
     input = to_unicode(input);
-    auto result = t->get_tok_tokenizer()->Encode(input);
+    auto result = t->get_hf_tokenizer()->Encode(input);
 
     for (int i = 0; i < std::min(result.size(), output_tokens_len); ++i) {
         output_tokens[i] = result[i];
@@ -134,16 +134,16 @@ tokenizer::tokenizer(std::string tokenizer_json_path,
     // Load HF Tokenizers tokenizer
     auto json_for_tok = json;
     json_for_tok["pre_tokenizer"] = nullptr; // remove unicode conversion to allow partial characters
-    tok_tokenizer = tokenizers::Tokenizer::FromBlobJSON(json_for_tok.dump());
+    hf_tokenizer = tokenizers::Tokenizer::FromBlobJSON(json_for_tok.dump());
     if (verbose) {
         const char sample_input[] = "x Z X C kaxnanxho ngixta 國家";
-        fmt::println("Loaded hf tokenizer. \"{}\" -> [{}]",
+        fmt::println("Loaded hf  tokenizer. \"{}\" -> [{}]",
                      sample_input,
                      fmt::join(tokenize(sample_input), ", "));
     }
 
     // Load LLG tokenizer
-    ll_tokenizer = load_llg_tokenizer(tok_tokenizer.get(), json);
+    ll_tokenizer = load_llg_tokenizer(hf_tokenizer.get(), json);
     if (verbose) {
         const char sample_input[] = ". / \\ ` ka.nan.ho ngi.ta 國家";
         fmt::println("Loaded llg tokenizer. \"{}\" -> [{}]",
@@ -191,7 +191,7 @@ tokenizer::~tokenizer()
 
 auto tokenizer::vocab_size() const -> int
 {
-    return tok_tokenizer->GetVocabSize();
+    return hf_tokenizer->GetVocabSize();
 }
 
 auto tokenizer::llg_tokenize(std::string_view string) const -> std::vector<uint32_t>
@@ -213,7 +213,7 @@ auto tokenizer::llg_tokenize(std::string_view string) const -> std::vector<uint3
 
 auto tokenizer::tokenize(std::string_view string) const -> std::vector<int>
 {
-    return tok_tokenizer->Encode(to_unicode(string));
+    return hf_tokenizer->Encode(to_unicode(string));
 }
 
 auto to_bytes(std::string_view s) -> std::string

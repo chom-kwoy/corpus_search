@@ -21,7 +21,7 @@ namespace corpus_search {
 class tokenizer
 {
     LlgTokenizer *ll_tokenizer = nullptr;
-    std::unique_ptr<tokenizers::Tokenizer> tok_tokenizer;
+    std::unique_ptr<tokenizers::Tokenizer> hf_tokenizer;
 
     std::unordered_map<int, std::string> tid_to_token;
     std::unordered_map<int, boost::dynamic_bitset<>> gt_n_char_masks;
@@ -46,20 +46,11 @@ public:
 
     auto vocab_size() const -> int;
 
-    auto get_tok_tokenizer() const -> tokenizers::Tokenizer * { return tok_tokenizer.get(); }
-    auto get_ll_tokenizer() const -> LlgTokenizer * { return ll_tokenizer; }
-    auto get_tid_to_token() const -> std::unordered_map<int, std::string> const &
-    {
-        return tid_to_token;
-    }
-    auto gt_n_char_mask(int n) const -> boost::dynamic_bitset<> const &
-    {
-        return gt_n_char_masks.at(n);
-    }
-    auto get_normalize_mapping() const -> std::unordered_map<char, char> const &
-    {
-        return normalize_mapping;
-    }
+    auto get_hf_tokenizer() const { return hf_tokenizer.get(); }
+    auto get_ll_tokenizer() const { return ll_tokenizer; }
+    auto get_tid_to_token() const -> auto const & { return tid_to_token; }
+    auto gt_n_char_mask(int n) const -> auto const & { return gt_n_char_masks.at(n); }
+    auto get_normalize_mapping() const -> auto const & { return normalize_mapping; }
 
     auto normalize(std::string_view string) const -> std::string;
     auto unnormalize(std::string_view string) const -> std::string;
@@ -68,7 +59,6 @@ public:
 };
 
 auto to_bytes(std::string_view s) -> std::string;
-
 auto to_unicode(std::string_view s) -> std::string;
 
 } // namespace corpus_search
