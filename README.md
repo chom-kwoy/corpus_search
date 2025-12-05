@@ -5,7 +5,7 @@ corpus_search is a library for efficient corpus search.
 
 # Testing commands
 
-sql```
+```sql
 create extension corpussearch;
 create index my_ibpe_index on sentences using ibpe (text) with (tokenizer_path = '/var/lib/postgresql/tokenizer.json');
 SELECT pg_size_pretty(pg_relation_size('my_ibpe_index'));
@@ -28,7 +28,7 @@ drop extension corpussearch cascade;
 # Benchmarks
 
 Search time by tokenizer's vocab_size
-```
+```bash
 vocab_size=2^10
 indexsize = 124.9MB
 o  -> 0.643146s
