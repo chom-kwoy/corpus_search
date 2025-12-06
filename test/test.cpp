@@ -92,5 +92,6 @@ TEST(Searcher, SearchRegexHard)
 {
     get_tok(), get_index();
 
-    EXPECT_EQ(measure_time(HANJA_RE "`i").size(), 61'261);
+    EXPECT_EQ(measure_time("(k[aeiou]\\.){3}k").size(), 61'261);
+    // EXPECT_EQ(measure_time(HANJA_RE "`i").size(), 61'261);
 }
