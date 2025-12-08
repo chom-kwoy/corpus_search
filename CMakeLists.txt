@@ -27,6 +27,7 @@ add_library(lib_corpus_search
     src/searcher.hpp
     src/index_builder.cpp
     src/index_builder.hpp
+    src/meta_utils.hpp
     src/regex_ast.hpp
     src/regex_ast.cpp
 )

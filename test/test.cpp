@@ -61,7 +61,8 @@ TEST(Regex, Regex)
 {
     // corpus_search::regex::parse("[a-z]+");
     // corpus_search::regex::parse("[a-zA-Z]+");
-    corpus_search::regex::parse("abc[a-zA-Z]+?");
+    corpus_search::regex::parse(
+        "abc[a-zA-Z]+?(?<name>st|uv)(?:pid)*\\b\\d*\\?\\p{Script=Han}$"); // \\B\\d*\\?\\p{Script=Han}
 }
 
 // TEST(Searcher, SearchStringSimple)
