@@ -27,6 +27,8 @@ add_library(lib_corpus_search
     src/searcher.hpp
     src/index_builder.cpp
     src/index_builder.hpp
+    src/regex_ast.hpp
+    src/regex_ast.cpp
 )
 set_property(TARGET lib_corpus_search PROPERTY POSITION_INDEPENDENT_CODE ON)
 target_include_directories(lib_corpus_search INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/src/")
@@ -106,6 +108,16 @@ CPMAddPackage(
 )
 
 target_link_libraries(lib_corpus_search PUBLIC msgpack-cxx)
+
+## PEGTL
+CPMAddPackage(
+    NAME pegtl
+    GITHUB_REPOSITORY "taocpp/PEGTL"
+    GIT_TAG "3.2.8"
+    EXCLUDE_FROM_ALL ON
+)
+
+target_link_libraries(lib_corpus_search PUBLIC taocpp::pegtl)
 
 ## llguidance
 find_package(LLGuidance REQUIRED)
