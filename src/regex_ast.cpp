@@ -9,6 +9,8 @@
 #include <tao/pegtl/contrib/utf32.hpp>
 #include <utf8.h>
 
+#include <any>
+#include <charconv>
 #include <iostream>
 #include <string>
 #include <variant>
@@ -23,8 +25,37 @@ using rvariant = boost::recursive_wrapper<std::variant<Ts...>>;
 
 namespace ast {
 
+template<typename It, typename ReturnT, typename... Args0, typename... ArgsT, std::size_t... Is>
+auto invoke(ReturnT (*func)(Args0..., ArgsT...),
+            Args0&&... args0,
+            It begin,
+            It end,
+            std::index_sequence<Is...> = std::make_index_sequence<sizeof...(ArgsT)>{}) -> ReturnT
+{
+    if (std::distance(begin, end) != sizeof...(ArgsT)) {
+        throw std::runtime_error("Invalid number of arguments.");
+    }
+    return func(std::forward<Args0>(args0)..., std::any_cast<ArgsT>(begin + Is)...);
+}
+
+template<typename... Ts>
+struct apply_
+{
+    auto operator()(pegtl::parse_tree::node* node) -> std::any
+    {
+        std::vector<std::any> params;
+
+        std::any result;
+        ((node->is_type<Ts>()
+          && ((result = invoke(Ts::apply, node, params.begin(), params.end()), true)))
+         || ...);
+        return result;
+    }
+};
+
 struct pattern;
 struct alternative;
+struct element;
 struct quantifier;
 struct quantifiable_element;
 
@@ -35,6 +66,7 @@ struct word_boundary_assertion;
 struct group;
 struct capturing_group;
 struct character_class;
+struct character_class_element;
 struct character_class_range;
 
 struct character_set;
@@ -42,42 +74,22 @@ struct any_character_set;
 struct escape_character_set;
 struct unicode_property_character_set;
 
-#define META_CHARS U'.', U'^', U'$', U'*', U'+', U'?', U'(', U'[', U'{', U'\\', U'|'
-struct character : pegtl::if_then_else<u8::one<U'\\'>, u8::one<META_CHARS>, u8::not_one<META_CHARS>>
-{
-    char32_t ch;
-};
+struct character;
+struct character_inside_brackets;
+struct number;
 
-#define BRACKET_META_CHARS U'^', U'-', U']', U'\\'
-struct character_inside_brackets
-    : pegtl::if_then_else<u8::one<U'\\'>, u8::one<BRACKET_META_CHARS>, u8::not_one<BRACKET_META_CHARS>>
-{
-    char32_t ch;
-};
-
-struct number : pegtl::plus<u8::range<U'0', U'9'>>
-{
-    int value;
-};
-
-struct element : pegtl::sor<assertion, quantifier, quantifiable_element>,
-                 rvariant<assertion, quantifier, quantifiable_element>
-{};
-
-struct quantifiable_element
-    : pegtl::sor<group, capturing_group, character_class, character_set, character>,
-      rvariant<group, capturing_group, character_class, character_set, character>
-{};
-
-struct character_class_element : pegtl::sor<escape_character_set,
-                                            unicode_property_character_set,
-                                            character_class_range,
-                                            character_inside_brackets>,
-                                 rvariant<escape_character_set,
-                                          unicode_property_character_set,
-                                          character_class_range,
-                                          character_inside_brackets>
-{};
+static auto apply = apply_<pattern,
+                           alternative,
+                           group,
+                           capturing_group,
+                           quantifier,
+                           character_class,
+                           character_class_range,
+                           assertion,
+                           character_set,
+                           character,
+                           character_inside_brackets,
+                           number>{};
 
 struct pattern : pegtl::seq<pegtl::plus<alternative>, pegtl::eolf>
 {
@@ -88,6 +100,10 @@ struct alternative : pegtl::plus<element>
 {
     std::vector<element> elements;
 };
+
+struct element : pegtl::sor<assertion, quantifier, quantifiable_element>,
+                 rvariant<assertion, quantifier, quantifiable_element>
+{};
 
 // non-capturing group
 struct group
@@ -105,6 +121,11 @@ struct capturing_group
     std::optional<std::string> name;
     std::vector<alternative> alternatives;
 };
+
+struct quantifiable_element
+    : pegtl::sor<group, capturing_group, character_class, character_set, character>,
+      rvariant<group, capturing_group, character_class, character_set, character>
+{};
 
 struct quantifier
     : pegtl::seq<quantifiable_element,
@@ -133,6 +154,16 @@ struct character_class : pegtl::seq<u8::one<U'['>,
     std::vector<character_class_element> elements;
 };
 
+struct character_class_element : pegtl::sor<escape_character_set,
+                                            unicode_property_character_set,
+                                            character_class_range,
+                                            character_inside_brackets>,
+                                 rvariant<escape_character_set,
+                                          unicode_property_character_set,
+                                          character_class_range,
+                                          character_inside_brackets>
+{};
+
 struct character_class_range
     : pegtl::seq<character_inside_brackets, u8::one<U'-'>, character_inside_brackets>
 {
@@ -160,7 +191,9 @@ struct word_boundary_assertion
 struct character_set
     : pegtl::sor<any_character_set, escape_character_set, unicode_property_character_set>,
       rvariant<any_character_set, escape_character_set, unicode_property_character_set>
-{};
+{
+    static auto apply(pegtl::parse_tree::node* node) -> character_set {}
+};
 enum class character_set_kind { any, digit, space, word, property };
 
 struct any_character_set : u8::one<U'.'>
@@ -193,29 +226,59 @@ struct unicode_property_character_set
     std::string value;
 };
 
-using result_t = std::variant<pattern,
-                              alternative,
-                              group,
-                              capturing_group,
-                              quantifier,
-                              character_class,
-                              character_class_range,
-                              assertion,
-                              character_set,
-                              char32_t,
-                              int>;
+#define META_CHARS U'.', U'^', U'$', U'*', U'+', U'?', U'(', U'[', U'{', U'\\', U'|'
+struct character : pegtl::if_then_else<u8::one<U'\\'>, u8::one<META_CHARS>, u8::not_one<META_CHARS>>
+{
+    char32_t ch;
 
-struct node : pegtl::parse_tree::node
-{};
+    static auto apply(pegtl::parse_tree::node* node) -> character
+    {
+        auto str = utf8::utf8to32(node->string_view());
+        if (str.starts_with(U'\\')) {
+            return {{}, str.at(1)};
+        }
+        return {{}, str.at(0)};
+    }
+};
 
+#define BRACKET_META_CHARS U'^', U'-', U']', U'\\'
+struct character_inside_brackets
+    : pegtl::if_then_else<u8::one<U'\\'>, u8::one<BRACKET_META_CHARS>, u8::not_one<BRACKET_META_CHARS>>
+{
+    char32_t ch;
+
+    static auto apply(pegtl::parse_tree::node* node) -> character
+    {
+        auto str = utf8::utf8to32(node->string_view());
+        if (str.starts_with(U'\\')) {
+            return {{}, str.at(1)};
+        }
+        return {{}, str.at(0)};
+    }
+};
+
+struct number : pegtl::plus<u8::range<U'0', U'9'>>
+{
+    int value;
+
+    static auto apply(pegtl::parse_tree::node* node) -> int
+    {
+        auto str = node->string_view();
+        int result;
+        auto begin = str.data();
+        auto end = str.data() + str.size();
+        auto status = std::from_chars(begin, end, result);
+        if (status.ec != std::errc{} || status.ptr != end) {
+            throw std::runtime_error("cannot parse number");
+        }
+        return result;
+    }
+};
 } // namespace ast
 
 static void visit_tree(pegtl::parse_tree::node* node)
 {
-    fmt::println("type {}", node->type);
-    for (auto&& child : node->children) {
-        visit_tree(child.get());
-    }
+    ast::apply(node);
 }
 
 void parse(std::string const& input)
@@ -225,9 +288,9 @@ void parse(std::string const& input)
     const std::size_t issues = tao::pegtl::analyze<ast::pattern>();
     if (issues == 0) {
         try {
-            auto root = pegtl::parse_tree::parse<ast::pattern, ast::node>(in);
+            auto root = pegtl::parse_tree::parse<ast::pattern>(in);
             if (root) {
-                // pegtl::parse_tree::print_dot(std::cout, *root);
+                pegtl::parse_tree::print_dot(std::cout, *root);
                 visit_tree(root.get());
             } else {
                 fmt::println("Not parsed.");
