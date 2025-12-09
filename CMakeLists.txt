@@ -28,6 +28,8 @@ add_library(lib_corpus_search
     src/index_builder.cpp
     src/index_builder.hpp
     src/meta_utils.hpp
+    src/regex_parse.hpp
+    src/regex_parse.cpp
     src/regex_ast.hpp
     src/regex_ast.cpp
 )
@@ -68,7 +70,7 @@ CPMAddPackage(
     re2
     GITHUB_REPOSITORY "google/re2"
     GIT_TAG           "2023-11-01"
-    OPTIONS           RE2_USE_ICU=ON
+    OPTIONS           "RE2_USE_ICU ON"
     EXCLUDE_FROM_ALL  ON
 )
 set_property(TARGET re2 PROPERTY POSITION_INDEPENDENT_CODE ON)
@@ -131,13 +133,13 @@ find_package(Boost REQUIRED)
 target_include_directories(lib_corpus_search PRIVATE ${Boost_INCLUDE_DIRS})
 
 ## roaring bitmap
-# CPMAddPackage(
-#   NAME roaring
-#   GITHUB_REPOSITORY "RoaringBitmap/CRoaring"
-#   GIT_TAG v2.0.4
-#   OPTIONS "ENABLE_ROARING_TESTS OFF"
-# )
-# target_link_libraries(lib_corpus_search PRIVATE roaring::roaring)
+CPMAddPackage(
+  NAME roaring
+  GITHUB_REPOSITORY "RoaringBitmap/CRoaring"
+  GIT_TAG v2.0.4
+  OPTIONS "ENABLE_ROARING_TESTS OFF"
+)
+target_link_libraries(lib_corpus_search PRIVATE roaring::roaring)
 ##################################################
 
 # Postgres extension installation

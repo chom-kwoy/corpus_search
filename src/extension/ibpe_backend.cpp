@@ -8,11 +8,12 @@
 #include <type_traits>
 #include <unordered_map>
 
-static_assert(std::is_layout_compatible_v<index_entry, corpus_search::index_entry>);
-static_assert(std::is_standard_layout_v<index_entry>);
+static_assert(
+    std::is_layout_compatible_v<corpus_search::backend::index_entry, corpus_search::index_entry>);
+static_assert(std::is_standard_layout_v<corpus_search::backend::index_entry>);
 static_assert(std::is_standard_layout_v<corpus_search::index_entry>);
 
-auto create_index_builder() noexcept -> index_builder
+auto corpus_search::backend::create_index_builder() noexcept -> index_builder
 {
     try {
         return reinterpret_cast<index_builder>(new corpus_search::index_builder{});
@@ -21,28 +22,28 @@ auto create_index_builder() noexcept -> index_builder
     }
 }
 
-void destroy_index_builder(index_builder builder) noexcept
+void corpus_search::backend::destroy_index_builder(index_builder builder) noexcept
 {
     delete reinterpret_cast<corpus_search::index_builder *>(builder);
 }
 
-void index_builder_add_sentence(index_builder builder,
-                                sentid_t sent_id,
-                                int *p_tokens,
-                                int n_tokens) noexcept
+void corpus_search::backend::index_builder_add_sentence(index_builder builder,
+                                                        sentid_t sent_id,
+                                                        int *p_tokens,
+                                                        int n_tokens) noexcept
 {
     reinterpret_cast<corpus_search::index_builder *>(builder)
         ->add_sentence(sent_id, std::span<const int>(p_tokens, p_tokens + n_tokens));
 }
 
-void index_builder_finalize(index_builder builder) noexcept
+void corpus_search::backend::index_builder_finalize(index_builder builder) noexcept
 {
     reinterpret_cast<corpus_search::index_builder *>(builder)->finalize_index();
 }
 
-void index_builder_iterate(index_builder builder,
-                           index_builder_iterate_function callback,
-                           void *user_data) noexcept
+void corpus_search::backend::index_builder_iterate(index_builder builder,
+                                                   index_builder_iterate_function callback,
+                                                   void *user_data) noexcept
 {
     auto const &index = reinterpret_cast<corpus_search::index_builder *>(builder)->get_index();
 
@@ -62,11 +63,11 @@ void index_builder_iterate(index_builder builder,
     }
 }
 
-auto create_tokenizer(char const *tokenizer_path,
-                      char normalize_mappings[][2],
-                      int n_normalize_mappings,
-                      char *err_msg,
-                      int err_len) noexcept -> tokenizer
+auto corpus_search::backend::create_tokenizer(char const *tokenizer_path,
+                                              char normalize_mappings[][2],
+                                              int n_normalize_mappings,
+                                              char *err_msg,
+                                              int err_len) noexcept -> tokenizer
 {
     try {
         std::unordered_map<char, char> mapping;
@@ -86,15 +87,15 @@ auto create_tokenizer(char const *tokenizer_path,
     }
 }
 
-void destroy_tokenizer(tokenizer tok) noexcept
+void corpus_search::backend::destroy_tokenizer(tokenizer tok) noexcept
 {
     delete reinterpret_cast<corpus_search::tokenizer *>(tok);
 }
 
-auto tokenizer_tokenize(tokenizer tok,
-                        char const *string,
-                        int *out_tokens,
-                        std::size_t maxlen) noexcept -> int
+auto corpus_search::backend::tokenizer_tokenize(tokenizer tok,
+                                                char const *string,
+                                                int *out_tokens,
+                                                std::size_t maxlen) noexcept -> int
 {
     auto tokens = reinterpret_cast<corpus_search::tokenizer *>(tok)->tokenize(string);
     for (int i = 0; i < std::min(maxlen, tokens.size()); ++i) {
@@ -103,14 +104,14 @@ auto tokenizer_tokenize(tokenizer tok,
     return tokens.size();
 }
 
-auto tokenizer_get_vocab_size(tokenizer tok) noexcept -> int
+auto corpus_search::backend::tokenizer_get_vocab_size(tokenizer tok) noexcept -> int
 {
     return reinterpret_cast<corpus_search::tokenizer *>(tok)->vocab_size();
 }
 
-auto search_corpus(tokenizer tok,
-                   index_accessor_cb callback,
-                   char const *search_term) noexcept -> sentid_vec
+auto corpus_search::backend::search_corpus(tokenizer tok,
+                                           index_accessor_cb callback,
+                                           char const *search_term) noexcept -> sentid_vec
 {
     try {
         auto tok_ptr = reinterpret_cast<corpus_search::tokenizer *>(tok);
@@ -137,24 +138,24 @@ auto search_corpus(tokenizer tok,
     }
 }
 
-auto sentid_vec_get_data(sentid_vec vec) noexcept -> sentid_t const *
+auto corpus_search::backend::sentid_vec_get_data(sentid_vec vec) noexcept -> sentid_t const *
 {
     return reinterpret_cast<std::vector<sentid_t> *>(vec)->data();
 }
 
-auto sentid_vec_get_size(sentid_vec vec) noexcept -> size_t
+auto corpus_search::backend::sentid_vec_get_size(sentid_vec vec) noexcept -> size_t
 {
     return reinterpret_cast<std::vector<sentid_t> *>(vec)->size();
 }
 
-void destroy_sentid_vec(sentid_vec vec) noexcept
+void corpus_search::backend::destroy_sentid_vec(sentid_vec vec) noexcept
 {
     delete reinterpret_cast<std::vector<sentid_t> *>(vec);
 }
 
-auto parse_normalize_mappings(char const *json_str,
-                              char mappings[][2],
-                              int max_mappings) noexcept -> int
+auto corpus_search::backend::parse_normalize_mappings(char const *json_str,
+                                                      char mappings[][2],
+                                                      int max_mappings) noexcept -> int
 {
     try {
         auto json = nlohmann::json::parse(json_str);

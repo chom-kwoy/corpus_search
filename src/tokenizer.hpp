@@ -1,5 +1,5 @@
-#ifndef TOKENIZER_H
-#define TOKENIZER_H
+#ifndef TOKENIZER_HPP
+#define TOKENIZER_HPP
 
 #include <memory>
 #include <string>
@@ -63,4 +63,4 @@ auto to_unicode(std::string_view s) -> std::string;
 
 } // namespace corpus_search
 
-#endif // TOKENIZER_H
+#endif // TOKENIZER_HPP

@@ -7,6 +7,7 @@
 
 #ifdef __cplusplus
 extern "C" {
+namespace corpus_search::backend {
 #else
 #define noexcept
 #endif
@@ -73,6 +74,7 @@ void destroy_sentid_vec(sentid_vec vec) noexcept;
 int parse_normalize_mappings(char const *json_str, char mappings[][2], int max_mappings) noexcept;
 
 #ifdef __cplusplus
+} // namespace corpus_search::backend
 }
 #endif
 

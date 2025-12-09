@@ -1,5 +1,5 @@
-#ifndef SEARCHER_H
-#define SEARCHER_H
+#ifndef SEARCHER_HPP
+#define SEARCHER_HPP
 
 #include "index_builder.hpp"
 #include "tokenizer.hpp"
@@ -18,4 +18,4 @@ auto search(tokenizer const &tok,
 
 } // namespace corpus_search
 
-#endif // SEARCHER_H
+#endif // SEARCHER_HPP
