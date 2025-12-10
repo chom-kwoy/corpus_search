@@ -5,6 +5,7 @@
 // The include order is important
 #include <access/amapi.h>
 #include <fmgr.h>
+#include <storage/bufpage.h>
 
 #define IBPE_STRATEGY_REGEX 1
 
