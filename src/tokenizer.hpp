@@ -31,6 +31,9 @@ class tokenizer
     std::unordered_map<char, char> normalize_mapping;
     std::unordered_map<char, char> inv_normalize_mapping;
 
+    auto normalize(std::string_view string) const -> std::string;
+    auto unnormalize(std::string_view string) const -> std::string;
+
     auto llg_tokenize(std::string_view string) const -> std::vector<std::uint32_t>;
 
     auto load_llg_tokenizer(tokenizers::Tokenizer *tok_tokenizer,
@@ -53,9 +56,6 @@ public:
     auto get_tid_to_token() const -> auto const & { return tid_to_token; }
     auto gt_n_char_mask(int n) const -> auto const & { return gt_n_char_masks.at(n); }
     auto get_normalize_mapping() const -> auto const & { return normalize_mapping; }
-
-    auto normalize(std::string_view string) const -> std::string;
-    auto unnormalize(std::string_view string) const -> std::string;
 
     auto tokenize(std::string_view string) const -> std::vector<int>;
 };

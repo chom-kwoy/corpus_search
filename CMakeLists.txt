@@ -1,12 +1,11 @@
 cmake_minimum_required(VERSION 3.28)
+if(POLICY CMP0167)
+  cmake_policy(SET CMP0167 NEW)
+endif()
 
 include(FetchContent)
 include(GNUInstallDirs)
 include(cmake/CPM.cmake)
-
-if(POLICY CMP0167)
-  cmake_policy(SET CMP0167 NEW)
-endif()
 
 project(corpus_search LANGUAGES C CXX)
 
@@ -205,7 +204,9 @@ else()
     message(AUTHOR_WARNING "Hint: Try installing postgresql-server-dev-18.")
 endif()
 
-# Testing
+
+##################################################
+#################### Testing #####################
 FetchContent_Declare(
     googletest
     URL https://github.com/google/googletest/archive/03597a01ee50ed33e9dfd640b249b4be3799d395.zip

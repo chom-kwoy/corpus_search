@@ -152,13 +152,6 @@ static ibpe_relcache *ibpe_relcache_fill(Relation indexRelation, ibpe_metapage_d
         elog(ERROR, "Cannot load tokenizer: %s", errmsg);
     }
 
-    cache->n_normalize_mappings = meta->n_normalize_mappings;
-    cache->normalize_mappings = MemoryContextAlloc(indexRelation->rd_indexcxt,
-                                                   sizeof(char[2]) * meta->n_normalize_mappings);
-    memcpy(cache->normalize_mappings,
-           meta->normalize_mappings,
-           sizeof(char[2]) * meta->n_normalize_mappings);
-
     // free tokenizer when cache is freed
     MemoryContextCallback *cb = MemoryContextAlloc(indexRelation->rd_indexcxt,
                                                    sizeof(MemoryContextCallback));

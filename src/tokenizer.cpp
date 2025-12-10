@@ -138,7 +138,7 @@ tokenizer::tokenizer(std::string tokenizer_json_path,
     json_for_tok["pre_tokenizer"] = nullptr; // remove unicode conversion to allow partial characters
     hf_tokenizer = tokenizers::Tokenizer::FromBlobJSON(json_for_tok.dump());
     if (verbose) {
-        const char sample_input[] = "x Z X C kaxnanxho ngixta 國家";
+        const char sample_input[] = ". / \\ ` kaxnanxho ngixta 國家";
         fmt::println("Loaded hf  tokenizer. \"{}\" -> [{}]",
                      sample_input,
                      fmt::join(tokenize(sample_input), ", "));
@@ -235,7 +235,7 @@ auto tokenizer::llg_tokenize(std::string_view string) const -> std::vector<uint3
 
 auto tokenizer::tokenize(std::string_view string) const -> std::vector<int>
 {
-    return hf_tokenizer->Encode(to_unicode(string));
+    return hf_tokenizer->Encode(to_unicode(normalize(string)));
 }
 
 auto to_bytes(std::string_view s) -> std::string

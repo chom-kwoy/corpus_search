@@ -252,8 +252,6 @@ typedef struct
     int num_indexed_tokens;
     int num_indexed_records;
     tokenizer tok;
-    int n_normalize_mappings;
-    char (*normalize_mappings)[2];
 
     // interface to the C++ backend
     index_builder builder;
@@ -292,28 +290,14 @@ static void ibpe_build_callback(Relation indexRelation,
 
     char *string = TextDatumGetCString(values[0]);
 
-    // normalize string (replace '.' with 'x', etc)
-    int len = strlen(string);
-    char *normalized_string = palloc0(len + 1);
-    for (int i = 0; i < len; ++i) {
-        char ch = string[i];
-        for (int j = 0; j < build_state->n_normalize_mappings; ++j) {
-            if (ch == build_state->normalize_mappings[j][0]) {
-                ch = build_state->normalize_mappings[j][1];
-                break;
-            }
-        }
-        normalized_string[i] = ch;
-    }
-
     int bufsz = 256;
     int *tokens = palloc0(bufsz * sizeof(int));
-    int n_tokens = tokenizer_tokenize(build_state->tok, normalized_string, tokens, bufsz);
+    int n_tokens = tokenizer_tokenize(build_state->tok, string, tokens, bufsz);
     if (n_tokens > bufsz) {
         // try again
         pfree(tokens);
         tokens = palloc0(n_tokens * sizeof(int));
-        tokenizer_tokenize(build_state->tok, normalized_string, tokens, n_tokens);
+        tokenizer_tokenize(build_state->tok, string, tokens, n_tokens);
     }
 
     if (build_state->indtuples < 5) {
@@ -322,11 +306,9 @@ static void ibpe_build_callback(Relation indexRelation,
              tid->ip_blkid.bi_hi,
              tid->ip_blkid.bi_lo,
              tid->ip_posid,
-             normalized_string,
+             string,
              n_tokens);
     }
-
-    pfree(normalized_string);
 
     sentid_t sent_id = 0;
     sent_id |= ((sentid_t) tid->ip_blkid.bi_hi << 32);
@@ -438,8 +420,6 @@ IndexBuildResult *ibpe_build(Relation heapRelation, Relation indexRelation, Inde
     build_state.num_indexed_tokens = 0;
     build_state.num_indexed_records = 0;
     build_state.tok = cache->tok;
-    build_state.n_normalize_mappings = cache->n_normalize_mappings;
-    build_state.normalize_mappings = cache->normalize_mappings;
 
     build_state.builder = create_index_builder();
     if (!build_state.builder) {

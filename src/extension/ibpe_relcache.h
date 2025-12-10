@@ -20,8 +20,6 @@ typedef struct
 typedef struct
 {
     tokenizer tok;
-    int n_normalize_mappings;
-    char (*normalize_mappings)[2];
 
     int vocab_size;
     ibpe_ptr_record *token_sid_map;
