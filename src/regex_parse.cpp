@@ -295,7 +295,7 @@ auto quantifier::apply(pegtl::parse_tree::node* node, std::vector<std::any> args
             result.max = 1;
         }
     } else if (args.size() == 2) {
-        result.min = 0;
+        result.min = std::any_cast<int>(args[1]);
         result.max = std::any_cast<int>(args[1]);
     } else if (args.size() == 3) {
         result.min = std::any_cast<int>(args[1]);

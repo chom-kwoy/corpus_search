@@ -92,18 +92,9 @@ auto test_parse(std::string regex) -> corpus_search::regex::sm::graph
     };
 
     fmt::println("");
+    std::fflush(stdout);
 
     return dfa;
-}
-
-#define HANJA_RE "[\u4E00-\u9FCC\u3400-\u4DB5]"
-TEST(Regex, Regex)
-{
-    test_parse(HANJA_RE "`i");
-    test_parse("(k[aeiou]\\.){3}k");
-    test_parse("a(a|ba)*|c*a");
-    test_parse("abc[^a-zA-Z]+?(?<name>st|uv)(?:pid)*\\?");
-    // test_parse("abc[a-zA-Z]+?(?<name>st|uv)(?:pid)*\\b\\d*\\?\\p{Script=Han}$");
 }
 
 static auto to_bitset(std::uint32_t const* mask, int len) -> roaring::Roaring
@@ -129,7 +120,46 @@ static auto nonzero_pos(roaring::Roaring const& bitmap)
     return result;
 }
 
+#define HANJA_RE "[\u4E00-\u9FCC\u3400-\u4DB5]"
+TEST(Regex, Regex)
+{
+    test_parse(HANJA_RE "`i");
+    test_parse("(k[aeiou]\\.){3}k");
+    test_parse("a(a|ba)*|c*a");
+    test_parse("abc[^a-zA-Z]+?(?<name>st|uv)(?:pid)*\\?");
+    // test_parse("abc[a-zA-Z]+?(?<name>st|uv)(?:pid)*\\b\\d*\\?\\p{Script=Han}$");
+}
+
 TEST(Regex, RegexTrie)
+{
+    auto dfa = test_parse("(k[aeiou]\\.){3}k");
+    auto trie = corpus_search::dfa_trie(get_tok());
+    auto my_bitmap = trie.get_next_tids(dfa, dfa.start_state);
+    auto my_next_tokens = nonzero_pos(my_bitmap);
+
+    auto tokens = std::vector<std::string>{};
+    for (int tid : my_next_tokens) {
+        tokens.push_back(get_tok().get_tid_to_token().at(tid));
+    }
+
+    fmt::println("next tokens = [{}]", fmt::join(tokens, ", "));
+
+    int new_state = trie.consume_token(dfa, dfa.start_state, "ka");
+    ASSERT_NE(new_state, corpus_search::dfa_trie::ACCEPTED);
+    ASSERT_NE(new_state, corpus_search::dfa_trie::REJECTED);
+
+    my_bitmap = trie.get_next_tids(dfa, new_state);
+    my_next_tokens = nonzero_pos(my_bitmap);
+    tokens.clear();
+    for (int tid : my_next_tokens) {
+        tokens.push_back(get_tok().get_tid_to_token().at(tid));
+    }
+
+    fmt::println("next state = {}", new_state);
+    fmt::println("next tokens = [{}]", fmt::join(tokens, ", "));
+}
+
+TEST(Regex, RegexTrieParity)
 {
     auto const regex = "[^\u4FCD-\u9FCC\u3400-\u4DB5]`i";
 
