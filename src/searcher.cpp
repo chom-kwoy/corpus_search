@@ -253,7 +253,7 @@ auto search(tokenizer const &tok,
     auto cand_lists = std::vector<pointer_or_object>{};
 
     std::unordered_map<std::string, candset> cache;
-    for (int pad_size = 0; pad_size < tok.MAX_TOKEN_LENGTH; ++pad_size) {
+    for (int pad_size = 0; pad_size < tok.max_token_length(); ++pad_size) {
         fmt::println("======= pad size = {} ========", pad_size);
 
         auto regex = fmt::format(".{{{}}}{}.*", pad_size, search_term);

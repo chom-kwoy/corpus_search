@@ -55,10 +55,7 @@ static auto utf8_range_n(std::string_view smin,
         result.push_back({std::move(start)});
         if (smax[0] > smin[0] + 1) {
             auto middle = ast::node_concat{{
-                {ast::node_range{
-                    static_cast<char>(smin[0] + 1),
-                    static_cast<char>(smax[0] - 1),
-                }},
+                {ast::node_range{smin[0] + 1, smax[0] - 1}},
             }};
             for (int i = 1; i < n; ++i) {
                 middle.args.push_back({ast::node_range{

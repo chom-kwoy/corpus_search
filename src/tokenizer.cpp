@@ -157,12 +157,14 @@ tokenizer::tokenizer(std::string tokenizer_json_path,
         tid_to_token[tok_id.get<int>()] = to_bytes(tok_str);
     }
 
+    max_token_bytes = 0;
     auto nchars_to_tid = std::unordered_map<int, std::vector<int>>{};
     for (auto const &[tid, token] : tid_to_token) {
         if (tid < 2) { // FIXME: special token detection
             // special token; skip
             continue;
         }
+        max_token_bytes = std::max<int>(max_token_bytes, token.size());
         if ((token[0] & 0b1100'0000) == 0b1000'0000) {
             // continuation byte; skip
             continue;
@@ -171,9 +173,13 @@ tokenizer::tokenizer(std::string tokenizer_json_path,
         nchars_to_tid[length].push_back(tid);
     }
 
-    for (int n = 0; n <= MAX_TOKEN_LENGTH; ++n) {
+    if (verbose) {
+        fmt::println("Max token length in bytes = {}", max_token_bytes);
+    }
+
+    for (int n = 0; n <= max_token_bytes; ++n) {
         auto bitmask = boost::dynamic_bitset<>(vocab_size());
-        for (int gt_n = n + 1; gt_n <= MAX_TOKEN_LENGTH; ++gt_n) {
+        for (int gt_n = n + 1; gt_n <= max_token_bytes; ++gt_n) {
             for (auto tid : nchars_to_tid.at(gt_n)) {
                 bitmask.set(tid);
             }
@@ -192,6 +198,11 @@ tokenizer::~tokenizer()
 auto tokenizer::vocab_size() const -> int
 {
     return hf_tokenizer->GetVocabSize();
+}
+
+auto tokenizer::max_token_length() const -> int
+{
+    return max_token_bytes;
 }
 
 auto tokenizer::llg_tokenize(std::string_view string) const -> std::vector<uint32_t>

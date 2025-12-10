@@ -19,8 +19,8 @@ struct node_empty
 {};
 struct node_range
 {
-    char min;
-    char max;
+    int min;
+    int max;
 };
 struct node_union
 {

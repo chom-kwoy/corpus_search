@@ -17,6 +17,12 @@ set(CMAKE_C_EXTENSIONS ON)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(CMAKE_C_FLAGS_INIT "-fsanitize=undefined -fsanitize=address")
+    set(CMAKE_CXX_FLAGS_INIT "-fsanitize=undefined -fsanitize=address")
+    message(NOTICE "Sanitizers enabled.")
+endif()
+
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 add_library(lib_corpus_search
@@ -32,6 +38,8 @@ add_library(lib_corpus_search
     src/regex_parse.cpp
     src/regex_ast.hpp
     src/regex_ast.cpp
+    src/regex_dfa.hpp
+    src/regex_dfa.cpp
 )
 set_property(TARGET lib_corpus_search PROPERTY POSITION_INDEPENDENT_CODE ON)
 target_include_directories(lib_corpus_search INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/src/")

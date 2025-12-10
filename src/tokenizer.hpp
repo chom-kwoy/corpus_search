@@ -24,6 +24,8 @@ class tokenizer
     std::unique_ptr<tokenizers::Tokenizer> hf_tokenizer;
 
     std::unordered_map<int, std::string> tid_to_token;
+
+    int max_token_bytes;
     std::unordered_map<int, boost::dynamic_bitset<>> gt_n_char_masks;
 
     std::unordered_map<char, char> normalize_mapping;
@@ -35,9 +37,8 @@ class tokenizer
                             nlohmann::json json) -> LlgTokenizer *;
 
 public:
-    // TODO: un-hardcode these
+    // TODO: un-hardcode this
     static constexpr int EOS_TOKEN_ID = 1;
-    static constexpr int MAX_TOKEN_LENGTH = 8; // in unicode characters
 
     tokenizer(std::string tokenizer_json_path,
               std::unordered_map<char, char> normalize_mapping,
@@ -45,6 +46,7 @@ public:
     ~tokenizer();
 
     auto vocab_size() const -> int;
+    auto max_token_length() const -> int;
 
     auto get_hf_tokenizer() const { return hf_tokenizer.get(); }
     auto get_ll_tokenizer() const { return ll_tokenizer; }
