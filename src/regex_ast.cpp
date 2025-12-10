@@ -247,10 +247,10 @@ static auto convert(T const& node) -> ast::node
         }
         auto elem = convert(node.element);
 
-        auto end = ast::node{};
+        ast::node end = {ast::node_empty{}};
         if (node.max == std::numeric_limits<int>::max()) {
             end = ast::node_star{elem};
-        } else {
+        } else if (node.min < node.max) {
             auto max_repeat = ast::node_concat{};
             for (int i = node.min + 1; i <= node.max; ++i) {
                 max_repeat.args.push_back({ast::node_union{{

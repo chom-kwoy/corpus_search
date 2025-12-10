@@ -134,7 +134,9 @@ TEST(Regex, RegexTrie)
 {
     auto dfa = test_parse("(k[aeiou]\\.){3}k");
     auto trie = corpus_search::dfa_trie(get_tok());
-    auto my_bitmap = trie.get_next_tids(dfa, dfa.start_state);
+
+    int state = dfa.start_state;
+    auto my_bitmap = trie.get_next_tids(dfa, state);
     auto my_next_tokens = nonzero_pos(my_bitmap);
 
     auto tokens = std::vector<std::string>{};
@@ -144,19 +146,50 @@ TEST(Regex, RegexTrie)
 
     fmt::println("next tokens = [{}]", fmt::join(tokens, ", "));
 
-    int new_state = trie.consume_token(dfa, dfa.start_state, "ka");
-    ASSERT_NE(new_state, corpus_search::dfa_trie::ACCEPTED);
-    ASSERT_NE(new_state, corpus_search::dfa_trie::REJECTED);
+    state = trie.consume_token(dfa, state, "ka");
+    ASSERT_NE(state, corpus_search::dfa_trie::ACCEPTED);
+    ASSERT_NE(state, corpus_search::dfa_trie::REJECTED);
 
-    my_bitmap = trie.get_next_tids(dfa, new_state);
+    my_bitmap = trie.get_next_tids(dfa, state);
     my_next_tokens = nonzero_pos(my_bitmap);
     tokens.clear();
     for (int tid : my_next_tokens) {
         tokens.push_back(get_tok().get_tid_to_token().at(tid));
     }
 
-    fmt::println("next state = {}", new_state);
+    fmt::println("next state = {}", state);
     fmt::println("next tokens = [{}]", fmt::join(tokens, ", "));
+
+    state = trie.consume_token(dfa, state, ".ku");
+    ASSERT_NE(state, corpus_search::dfa_trie::ACCEPTED);
+    ASSERT_NE(state, corpus_search::dfa_trie::REJECTED);
+
+    my_bitmap = trie.get_next_tids(dfa, state);
+    my_next_tokens = nonzero_pos(my_bitmap);
+    tokens.clear();
+    for (int tid : my_next_tokens) {
+        tokens.push_back(get_tok().get_tid_to_token().at(tid));
+    }
+
+    fmt::println("next state = {}", state);
+    fmt::println("next tokens = [{}]", fmt::join(tokens, ", "));
+
+    state = trie.consume_token(dfa, state, ".ko");
+    ASSERT_NE(state, corpus_search::dfa_trie::ACCEPTED);
+    ASSERT_NE(state, corpus_search::dfa_trie::REJECTED);
+
+    my_bitmap = trie.get_next_tids(dfa, state);
+    my_next_tokens = nonzero_pos(my_bitmap);
+    tokens.clear();
+    for (int tid : my_next_tokens) {
+        tokens.push_back(get_tok().get_tid_to_token().at(tid));
+    }
+
+    fmt::println("next state = {}", state);
+    fmt::println("next tokens = [{}]", fmt::join(tokens, ", "));
+
+    state = trie.consume_token(dfa, state, ".k");
+    ASSERT_EQ(state, corpus_search::dfa_trie::ACCEPTED);
 }
 
 TEST(Regex, RegexTrieParity)
