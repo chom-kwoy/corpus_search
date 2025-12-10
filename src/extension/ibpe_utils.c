@@ -16,7 +16,7 @@
 #include <utils/rel.h>
 #include <utils/selfuncs.h>
 
-PG_MODULE_MAGIC_EXT(.name = "ibpe", .version = PG_VERSION);
+PG_MODULE_MAGIC;
 
 PG_FUNCTION_INFO_V1(ibpe_handler);
 Datum ibpe_handler(PG_FUNCTION_ARGS)
