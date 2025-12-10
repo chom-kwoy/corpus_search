@@ -1,19 +1,20 @@
 #include "dfa_trie.hpp"
 
 #include <algorithm>
+#include <queue>
 
 namespace corpus_search {
 
 struct trie_node
 {
-    int token_id;
+    std::vector<int> token_ids;
     std::vector<std::unique_ptr<trie_node>> children;
 
     trie_node();
 };
 
 trie_node::trie_node()
-    : token_id(-1)
+    : token_ids()
     , children(256)
 {}
 
@@ -31,15 +32,19 @@ struct trie
             }
             node = node->children[idx].get();
         }
-        node->token_id = token_id;
+        node->token_ids.push_back(token_id);
     }
 };
 
 dfa_trie::dfa_trie(tokenizer const& tok)
-    : m_trie(std::make_unique<trie>())
+    : tries(tok.max_token_bytes())
 {
-    for (auto&& [tid, token] : tok.get_tid_to_token()) {
-        m_trie->insert(tid, token);
+    for (int i = 0; i < tok.max_token_bytes(); ++i) {
+        for (auto&& [tid, token] : tok.get_tid_to_token()) {
+            if (token.length() > i) {
+                tries[i].insert(tid, std::string_view(token.begin() + i, token.end()));
+            }
+        }
     }
 }
 
@@ -50,22 +55,45 @@ static void recurse(trie_node* node,
                     int state,
                     roaring::Roaring& result)
 {
-    if (node->token_id != -1) {
-        result.add(node->token_id);
+    for (int tid : node->token_ids) {
+        result.add(tid);
     }
-    for (auto edge : dfa.edges.at(state)) {
-        for (int i = edge.range.min; i <= edge.range.max; ++i) {
-            if (node->children[i]) {
-                recurse(node->children[i].get(), dfa, edge.target_state, result);
+    if (dfa.accept_states.contains(state)) {
+        // collect all tokens in the subtree
+        std::queue<trie_node*> pending;
+        pending.push(node);
+        while (!pending.empty()) {
+            auto current = pending.front();
+            pending.pop();
+            for (int tid : current->token_ids) {
+                result.add(tid);
+            }
+            for (auto& child : current->children) {
+                if (child) {
+                    pending.push(child.get());
+                }
+            }
+        }
+    } else {
+        for (auto edge : dfa.edges.at(state)) {
+            for (int i = edge.range.min; i <= edge.range.max; ++i) {
+                if (node->children[i]) {
+                    recurse(node->children[i].get(), dfa, edge.target_state, result);
+                }
             }
         }
     }
 }
 
-auto dfa_trie::get_next_tids(regex::sm::graph const& dfa, int state) const -> roaring::Roaring
+auto dfa_trie::get_next_tids(regex::sm::graph const& dfa,
+                             int state,
+                             int prefix_length) const -> roaring::Roaring
 {
+    if (prefix_length >= tries.size()) {
+        return {};
+    }
     roaring::Roaring result;
-    recurse(m_trie->root.get(), dfa, state, result);
+    recurse(tries[prefix_length].root.get(), dfa, state, result);
     return result;
 }
 

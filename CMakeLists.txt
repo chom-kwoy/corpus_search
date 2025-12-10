@@ -126,10 +126,6 @@ CPMAddPackage(
 )
 target_link_libraries(lib_corpus_search PUBLIC taocpp::pegtl)
 
-## llguidance ##
-find_package(LLGuidance REQUIRED)
-target_link_libraries(lib_corpus_search PUBLIC LLGuidance::LLGuidance)
-
 ## boost dynamic_bitset ##
 find_package(Boost REQUIRED)
 target_include_directories(lib_corpus_search PRIVATE ${Boost_INCLUDE_DIRS})
@@ -168,6 +164,7 @@ if ((pg_includedir_obtained EQUAL 0) AND (EXISTS "${pg_includedir}"))
         src/extension/ibpe_scan.c
         src/extension/ibpe_backend.h
         src/extension/ibpe_backend.cpp
+        test/test.hpp
     )
 
     target_compile_definitions(ibpe PRIVATE USE_ASSERT_CHECKING)
@@ -218,9 +215,16 @@ FetchContent_MakeAvailable(googletest)
 
 enable_testing()
 
-add_executable(test_corpus_search test/test.cpp)
+add_executable(test_corpus_search
+    test/test.cpp
+    test/test_regex.cpp
+)
+
+find_package(LLGuidance REQUIRED)
+
 target_link_libraries(test_corpus_search PUBLIC
     lib_corpus_search
+    LLGuidance::LLGuidance
     GTest::gmock_main
     fmt::fmt
 )

@@ -3,6 +3,8 @@
 
 #include "regex_parse.hpp"
 
+#include <cassert>
+
 namespace corpus_search::regex {
 
 namespace ast {
@@ -21,6 +23,13 @@ struct node_range
 {
     int min;
     int max;
+
+    node_range(int min = 0, int max = 0)
+        : min(min)
+        , max(max)
+    {
+        assert(min >= 0 && max >= 0);
+    }
 };
 struct node_union
 {

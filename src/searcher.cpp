@@ -1,12 +1,13 @@
 #include "searcher.hpp"
 
-#include <queue>
+#include "dfa_trie.hpp"
+
 #include <fmt/chrono.h>
 #include <fmt/core.h>
 #include <fmt/ranges.h>
-#include <llguidance.h>
 #include <msgpack.hpp>
 #include <nlohmann/json.hpp>
+#include <queue>
 #include <re2/re2.h>
 #include <tokenizers_cpp.h>
 #include <utf8.h>
@@ -148,27 +149,26 @@ auto merge_sorted_lists(std::vector<pointer_or_object> const &cand_lists) -> std
     return result;
 }
 
-auto generate_cands(tokenizer const &tok,
+auto generate_cands(int state,
+                    std::string const &prev_prefix, // for debugging only
+                    tokenizer const &tok,
+                    regex::sm::graph const &dfa,
+                    dfa_trie const &trie,
                     std::function<index_accessor> const &index,
-                    LlgMatcher *matcher,
-                    int pad_size,
-                    RE2 const &search_regex,
-                    std::unordered_map<std::string, candset> &cache,
-                    std::string const &prev_prefix = "",
-                    int level = 0) -> std::vector<index_entry>
+                    std::unordered_map<int, std::vector<index_entry>> &cache,
+                    int level = 1) -> std::vector<index_entry>
 {
-    if (llg_matcher_compute_mask(matcher)) {
-        throw std::runtime_error("Error computing mask");
+    if (cache.contains(state)) {
+        return cache.at(state);
     }
 
-    auto bitmask = to_bitset(llg_matcher_get_mask(matcher), tok.vocab_size());
+    auto next_tokens = trie.get_next_tids(dfa, state);
 
-    if (level == 0) {
-        bitmask &= tok.gt_n_char_mask(pad_size);
-    }
-
-    auto next_tokens = nonzero_pos(bitmask);
-    fmt::println("lvl {}: '{}' (+ {} tokens)", level, prev_prefix, next_tokens.size());
+    fmt::println("lvl {} (state={}): '{}' (+ {} tokens)",
+                 level,
+                 state,
+                 prev_prefix,
+                 next_tokens.cardinality());
 
     auto cand_lists = std::vector<pointer_or_object>{};
 
@@ -177,49 +177,20 @@ auto generate_cands(tokenizer const &tok,
 
         auto token_str = tok.get_tid_to_token().at(token);
         auto cur_prefix = prev_prefix + token_str;
-        if (level == 0) {
-            auto it = cur_prefix.begin();
-            for (int i = 0; i < pad_size; ++i) {
-                utf8::next(it, cur_prefix.end());
-            }
-            cur_prefix = cur_prefix.substr(it - cur_prefix.begin());
-        }
 
         auto matches = index(token);
         if (matches.size() == 0) {
             continue;
         }
 
-        if (cache.count(cur_prefix) > 0) {
-            auto const &cands = cache.at(cur_prefix);
-
-            cand_lists.push_back(followed_by(std::move(matches), cands));
-            continue;
-        }
-
-        auto cur_prefix_view = absl::string_view(cur_prefix);
-        if (RE2::Consume(&cur_prefix_view, search_regex)) {
+        int new_state = trie.consume_token(dfa, state, token_str);
+        assert(new_state != dfa_trie::REJECTED);
+        if (new_state == dfa_trie::ACCEPTED) {
             cand_lists.push_back(matches);
             continue;
         }
 
-        if (llg_matcher_consume_token(matcher, token)) {
-            throw std::runtime_error("llg_matcher_consume_token returned error");
-        }
-
-        auto cands = generate_cands(tok,
-                                    index,
-                                    matcher,
-                                    pad_size,
-                                    search_regex,
-                                    cache,
-                                    cur_prefix,
-                                    level + 1);
-
-        if (llg_matcher_rollback(matcher, 1)) {
-            throw std::runtime_error("llg_matcher_rollback returned error");
-        }
-
+        auto cands = generate_cands(new_state, cur_prefix, tok, dfa, trie, index, cache, level + 1);
         cand_lists.push_back(followed_by(std::move(matches), cands));
     }
 
@@ -227,7 +198,7 @@ auto generate_cands(tokenizer const &tok,
     auto result = merge_sorted_lists(cand_lists);
 
     if (level > 0) {
-        cache[prev_prefix] = result;
+        cache[state] = result;
     }
 
     return result;
@@ -237,37 +208,52 @@ auto generate_cands(tokenizer const &tok,
 
 auto search(tokenizer const &tok,
             std::function<index_accessor> const &index,
-            std::string const &search_term) -> std::vector<sentid_t>
+            std::string const &regex) -> std::vector<sentid_t>
 {
-    LlgConstraintInit init;
-    llg_constraint_init_set_defaults(&init, tok.get_ll_tokenizer());
+    fmt::println("Regex = {}", regex);
 
-    struct LlgMatcherDeleter
-    {
-        void operator()(LlgMatcher *p) const { llg_free_matcher(p); }
-    };
+    auto cst = corpus_search::regex::parse(regex);
+    fmt::println("CST: {}", corpus_search::regex::print_cst(cst));
 
-    fmt::println("Regex = {}", search_term);
-    std::fflush(stdout);
+    auto ast = corpus_search::regex::cst_to_ast(cst);
+    fmt::println("AST: {}", corpus_search::regex::print_ast(ast));
+
+    auto dfa = corpus_search::regex::ast_to_dfa(ast);
+    fmt::println("DFA: start_state={}, accept_states=[{}], num_states={}",
+                 dfa.start_state,
+                 fmt::join(dfa.accept_states, ", "),
+                 dfa.num_states);
+
+    auto trie = dfa_trie(tok); // TODO: cache trie construction
 
     auto cand_lists = std::vector<pointer_or_object>{};
 
-    std::unordered_map<std::string, candset> cache;
-    for (int pad_size = 0; pad_size < tok.max_token_length(); ++pad_size) {
-        fmt::println("======= pad size = {} ========", pad_size);
+    std::unordered_map<int, std::vector<index_entry>> cache;
+    for (int p = 0; p < tok.max_token_bytes(); ++p) {
+        auto next_tokens = trie.get_next_tids(dfa, dfa.start_state, p);
 
-        auto regex = fmt::format(".{{{}}}{}.*", pad_size, search_term);
+        fmt::println("p={}\nlvl {}: '{}' (+ {} tokens)", p, 0, "", next_tokens.cardinality());
 
-        auto m = std::unique_ptr<LlgMatcher, LlgMatcherDeleter>(
-            llg_new_matcher(&init, "regex", regex.c_str()));
-        if (llg_matcher_get_error(m.get())) {
-            throw std::runtime_error("Error constructing constraint");
+        for (auto tid : next_tokens) {
+            auto matches = index(tid);
+            if (matches.size() == 0) {
+                continue;
+            }
+
+            auto token_str = tok.get_tid_to_token().at(tid).substr(p);
+            int new_state = trie.consume_token(dfa, dfa.start_state, token_str);
+            assert(new_state != dfa_trie::REJECTED);
+
+            if (new_state == dfa_trie::ACCEPTED) {
+                cand_lists.push_back(matches);
+            } else {
+                auto cands = generate_cands(new_state, token_str, tok, dfa, trie, index, cache);
+                cand_lists.push_back(followed_by(std::move(matches), cands));
+            }
         }
-
-        auto cands = generate_cands(tok, index, m.get(), pad_size, RE2(search_term), cache);
-
-        cand_lists.push_back(std::move(cands));
     }
+
+    std::fflush(stdout);
 
     return get_sent_ids(merge_sorted_lists(cand_lists));
 }

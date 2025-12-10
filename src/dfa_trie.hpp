@@ -12,13 +12,15 @@ struct trie;
 
 class dfa_trie
 {
-    std::unique_ptr<trie> m_trie;
+    std::vector<trie> tries;
 
 public:
     dfa_trie(tokenizer const& tok);
     ~dfa_trie();
 
-    auto get_next_tids(regex::sm::graph const& dfa, int state) const -> roaring::Roaring;
+    auto get_next_tids(regex::sm::graph const& dfa,
+                       int state,
+                       int prefix_length = 0) const -> roaring::Roaring;
 
     static constexpr int ACCEPTED = -1;
     static constexpr int REJECTED = -2;

@@ -61,7 +61,7 @@ static auto make_start(std::string_view smin) -> ast::node
         auto initial = ast::node_concat{{
             {ast::node_range{smin_0 + 1, 0b1011'1111}},
         }};
-        for (int i = 0; i < smin.size() - 1; ++i) {
+        for (int i = 1; i < smin.size(); ++i) {
             initial.args.push_back({ast::node_range{
                 0b1000'0000,
                 0b1011'1111,
@@ -89,7 +89,7 @@ static auto make_last(std::string_view smax) -> ast::node
         auto initial = ast::node_concat{{
             {ast::node_range{0b1000'0000, smax_0 - 1}},
         }};
-        for (int i = 0; i < smax.size(); ++i) {
+        for (int i = 1; i < smax.size(); ++i) {
             initial.args.push_back({ast::node_range{
                 0b1000'0000,
                 0b1011'1111,
@@ -324,11 +324,11 @@ static auto convert(T const& node) -> ast::node
     } else if constexpr (std::is_same_v<T, char32_t>) {
         auto str = utf8::utf32to8(std::u32string_view(&node, 1));
         if (str.size() == 1) {
-            return {ast::node_range{str[0], str[0]}};
+            return {ast::node_range{str[0] & 0xff, str[0] & 0xff}};
         } else {
             auto result = ast::node_concat{};
-            for (auto c : str) {
-                result.args.push_back({ast::node_range{c, c}});
+            for (char c : str) {
+                result.args.push_back({ast::node_range{c & 0xff, c & 0xff}});
             }
             return {result};
         }

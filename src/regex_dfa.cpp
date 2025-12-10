@@ -113,7 +113,7 @@ auto ast_to_dfa(ast::node const& node) -> sm::graph
 {
     auto aug_node = ast::node{ast::node_concat{{
         node,
-        {ast::node_range{-1, -1}},
+        {ast::node_range{}},
     }}};
 
     mark_state visit_state{};
