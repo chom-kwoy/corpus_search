@@ -2,6 +2,7 @@
 
 #include "dfa_trie.hpp"
 
+#include <chrono>
 #include <fmt/chrono.h>
 #include <fmt/core.h>
 #include <fmt/ranges.h>
@@ -224,7 +225,11 @@ auto search(tokenizer const &tok,
                  fmt::join(dfa.accept_states, ", "),
                  dfa.num_states);
 
-    auto trie = dfa_trie(tok); // TODO: cache trie construction
+    auto begin_time = std::chrono::high_resolution_clock::now();
+    auto trie = dfa_trie(tok);
+    auto elapsed = std::chrono::high_resolution_clock::now() - begin_time;
+    fmt::println("Constructed DFA trie in {}.",
+                 std::chrono::duration_cast<std::chrono::duration<float>>(elapsed));
 
     auto cand_lists = std::vector<pointer_or_object>{};
 

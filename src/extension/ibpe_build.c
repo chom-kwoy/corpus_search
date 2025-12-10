@@ -454,15 +454,14 @@ IndexBuildResult *ibpe_build(Relation heapRelation, Relation indexRelation, Inde
     index_builder_iterate(build_state.builder, ibpe_index_builder_iterate, &build_state);
 
     // force flush remaining pages
+    ibpe_push_record(indexRelation,
+                     build_state.sid_page.data,
+                     IBPE_PAGE_SID,
+                     &build_state.sid_page_prevno,
+                     NULL, // force flush
+                     0,
+                     NULL);
     if (build_state.n_records_to_link > 0) {
-        ibpe_push_record(indexRelation,
-                         build_state.sid_page.data,
-                         IBPE_PAGE_SID,
-                         &build_state.sid_page_prevno,
-                         NULL, // force flush
-                         0,
-                         NULL);
-
         ibpe_flush_records_to_link(&build_state);
     }
     ibpe_push_record(indexRelation,

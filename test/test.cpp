@@ -63,6 +63,7 @@ TEST(Searcher, SearchStringHard)
     EXPECT_EQ(measure_time("ka\\.nan\\.ho").size(), 719);
     EXPECT_EQ(measure_time("o\\.non").size(), 74'953);
     EXPECT_EQ(measure_time("國家").size(), 296);
+    EXPECT_EQ(measure_time("家non").size(), 59);
 }
 
 TEST(Searcher, SearchRegexEasy)

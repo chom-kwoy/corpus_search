@@ -15,15 +15,18 @@ SELECT pg_size_pretty(pg_relation_size('my_ibpe_index'));
 
 -- with ibpe index
 SET enable_seqscan = off; explain analyze select text from sentences where text ~ 'ho';
-
 -- without index
 SET max_parallel_workers_per_gather = 0; SET enable_seqscan = on; explain analyze select text from sentences where text ~ 'ho';
 
 -- with ibpe index
 SET enable_seqscan = off; explain analyze select text from sentences where text ~ 'si\.ta\.so\.ngi\.ta';
-
 -- without index
 SET max_parallel_workers_per_gather = 0; SET enable_seqscan = on; explain analyze select text from sentences where text ~ 'si\.ta\.so\.ngi\.ta';
+
+-- with ibpe index
+SET enable_seqscan = off; explain analyze select text from sentences where text ~ '[一-鿌㐀-䶵]`i';
+-- without index
+SET max_parallel_workers_per_gather = 0; SET enable_seqscan = on; explain analyze select text from sentences where text ~ '[一-鿌㐀-䶵]`i';
 
 drop extension corpussearch cascade;
 ```

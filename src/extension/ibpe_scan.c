@@ -81,7 +81,12 @@ static int ibpe_access_index(void *user_data, int token, index_entry *data, int 
             // follow pointer to next page blkno
             int next_blkno = ibpe_get_opaque(page)->next_blkno;
             if (next_blkno == InvalidBlockNumber) {
-                elog(ERROR, "ibpe_access_index: unexpected end of pages");
+                elog(ERROR,
+                     "ibpe_access_index: unexpected end of pages when reading #%d out of %d "
+                     "entries for token %d",
+                     i,
+                     num_entries,
+                     token);
             }
 
             UnlockReleaseBuffer(buffer);
