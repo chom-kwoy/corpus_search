@@ -166,11 +166,11 @@ auto ast_to_dfa(ast::node const& node) -> sm::graph
             auto ch_range = leaf_map.at(p);
 
             auto to_add = std::map<ast::node_range, std::set<int>, comparator>{};
-            auto lbound = transitions.upper_bound({ch_range.min});
+            auto lbound = transitions.upper_bound({ch_range.min, 0});
             if (lbound != transitions.begin()) {
                 --lbound;
             }
-            auto ubound = transitions.upper_bound({ch_range.max});
+            auto ubound = transitions.upper_bound({ch_range.max, 0});
             while (lbound != ubound && ch_range.min <= ch_range.max) {
                 auto other_range = lbound->first;
                 auto omin = std::max(ch_range.min, other_range.min);

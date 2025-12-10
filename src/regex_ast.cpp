@@ -39,47 +39,117 @@ static auto character_set(T const& node) -> roaring::Roaring
     }
 }
 
+static auto make_start(std::string_view smin) -> ast::node
+{
+    int smin_0 = smin[0] & 0xFF;
+    if (smin.size() == 1) {
+        return {ast::node_range{
+            smin_0,
+            0b1011'1111,
+        }};
+    }
+
+    auto result = ast::node_union{};
+
+    auto first = ast::node_concat{{
+        {ast::node_range{smin_0, smin_0}},
+        make_start(smin.substr(1)),
+    }};
+    result.args.push_back({first});
+
+    if (smin_0 < 0b1011'1111) {
+        auto initial = ast::node_concat{{
+            {ast::node_range{smin_0 + 1, 0b1011'1111}},
+        }};
+        for (int i = 0; i < smin.size() - 1; ++i) {
+            initial.args.push_back({ast::node_range{
+                0b1000'0000,
+                0b1011'1111,
+            }});
+        }
+        result.args.push_back({initial});
+    }
+
+    return {result};
+}
+
+static auto make_last(std::string_view smax) -> ast::node
+{
+    int smax_0 = smax[0] & 0xFF;
+    if (smax.size() == 1) {
+        return {ast::node_range{
+            0b1000'0000,
+            smax_0,
+        }};
+    }
+
+    auto result = ast::node_union{};
+
+    if (smax_0 > 0b1000'0000) {
+        auto initial = ast::node_concat{{
+            {ast::node_range{0b1000'0000, smax_0 - 1}},
+        }};
+        for (int i = 0; i < smax.size(); ++i) {
+            initial.args.push_back({ast::node_range{
+                0b1000'0000,
+                0b1011'1111,
+            }});
+        }
+        result.args.push_back({initial});
+    }
+
+    auto last = ast::node_concat{{
+        {ast::node_range{smax_0, smax_0}},
+        make_last(smax.substr(1)),
+    }};
+    result.args.push_back({last});
+
+    return {result};
+}
+
 static auto utf8_range_n(std::string_view smin,
                          std::string_view smax,
                          int n) -> std::vector<ast::node>
 {
     std::vector<ast::node> result;
 
+    int smin_0 = smin[0] & 0xFF;
+    int smax_0 = smax[0] & 0xFF;
     if (n == 1) {
-        result.push_back({ast::node_range{smin[0], smax[0]}});
-    } else if (smin[0] < smax[0]) {
-        auto start = ast::node_concat{{{ast::node_range{smin[0], smin[0]}}}};
-        for (int i = 1; i < n; ++i) {
-            start.args.push_back({ast::node_range{smin[i], char(0b1011'1111)}});
-        }
+        result.push_back({ast::node_range{smin_0, smax_0}});
+    } else if (smin_0 < smax_0) {
+        auto start = ast::node_concat{{
+            {ast::node_range{smin_0, smin_0}},
+            make_start(smin.substr(1)),
+        }};
         result.push_back({std::move(start)});
-        if (smax[0] > smin[0] + 1) {
+        if (smax_0 > smin_0 + 1) {
             auto middle = ast::node_concat{{
-                {ast::node_range{smin[0] + 1, smax[0] - 1}},
+                {ast::node_range{smin_0 + 1, smax_0 - 1}},
             }};
             for (int i = 1; i < n; ++i) {
                 middle.args.push_back({ast::node_range{
-                    char(0b1000'0000),
-                    char(0b1011'1111),
+                    0b1000'0000,
+                    0b1011'1111,
                 }});
             }
             result.push_back({std::move(middle)});
         }
-        auto last = ast::node_concat{{{ast::node_range{smax[0], smax[0]}}}};
-        for (int i = 1; i < n; ++i) {
-            last.args.push_back({ast::node_range{char(0b1000'0000), smax[i]}});
-        }
+        auto last = ast::node_concat{{
+            {ast::node_range{smax_0, smax_0}},
+            make_last(smax.substr(1)),
+        }};
         result.push_back({std::move(last)});
     } else {
         auto vec = utf8_range_n(smin.substr(1), smax.substr(1), n - 1);
         if (vec.size() == 1) {
             result.push_back({ast::node_concat{{
-                {ast::node_range{smin[0], smax[0]}},
+                {ast::node_range{smin_0, smax_0}},
                 vec[0],
             }}});
         } else {
             result.push_back({ast::node_concat{{
-                {ast::node_range{smin[0], smax[0]}},
+                {ast::node_range{smin_0, smax_0}},
                 {ast::node_union{std::move(vec)}},
             }}});
         }
@@ -120,34 +190,22 @@ static auto bitmap_to_node(roaring::Roaring const& set) -> ast::node
     char32_t range_min = 0;
     char32_t range_max = -1;
 
-    constexpr std::size_t PAGE_SIZE = 8192;
+    int size = set.cardinality();
+    constexpr int PAGE_SIZE = 8192;
     std::vector<std::uint32_t> page(PAGE_SIZE);
-    for (int offset = 0; offset <= UNICODE_MAX; offset += PAGE_SIZE) {
-        int sz = roaring::api::roaring_bitmap_range_cardinality(&set.roaring,
-                                                                offset,
-                                                                offset + PAGE_SIZE);
-        if (sz == PAGE_SIZE) {
+    for (int offset = 0; offset <= size; offset += PAGE_SIZE) {
+        int sz = std::min(size - offset, PAGE_SIZE);
+        page.resize(sz);
+        set.rangeUint32Array(page.data(), offset, sz);
+        for (auto cur_idx : page) {
             if (range_max == -1) {
-                range_min = offset;
-            } else if (range_max + 1 < offset) {
+                range_min = cur_idx;
+            } else if (range_max + 1 < cur_idx) {
                 auto vec = range_to_node(range_min, range_max);
                 result.args.insert(result.args.end(), vec.begin(), vec.end());
-                range_min = offset;
+                range_min = cur_idx;
             }
-            range_max = offset + PAGE_SIZE - 1;
-        } else if (sz > 0) {
-            page.resize(sz);
-            set.rangeUint32Array(page.data(), offset, PAGE_SIZE);
-            for (auto cur_idx : page) {
-                if (range_max == -1) {
-                    range_min = cur_idx;
-                } else if (range_max + 1 < cur_idx) {
-                    auto vec = range_to_node(range_min, range_max);
-                    result.args.insert(result.args.end(), vec.begin(), vec.end());
-                    range_min = cur_idx;
-                }
-                range_max = cur_idx;
-            }
+            range_max = cur_idx;
         }
     }
     if (range_max != -1) {

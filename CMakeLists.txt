@@ -40,6 +40,8 @@ add_library(lib_corpus_search
     src/regex_ast.cpp
     src/regex_dfa.hpp
     src/regex_dfa.cpp
+    src/dfa_trie.cpp
+    src/dfa_trie.hpp
 )
 set_property(TARGET lib_corpus_search PROPERTY POSITION_INDEPENDENT_CODE ON)
 target_include_directories(lib_corpus_search INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/src/")
@@ -49,8 +51,10 @@ target_compile_definitions(lib_corpus_search PUBLIC
     CORPUS_SEARCH_POSITION_BITS=12
 )
 
-########### Link External libraries ###########
-## fmt
+
+##################################################
+########### Link External libraries ##############
+## fmt ##
 FetchContent_Declare(
     fmt
     GIT_REPOSITORY https://github.com/fmtlib/fmt
@@ -59,10 +63,9 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(fmt)
 set_property(TARGET fmt PROPERTY POSITION_INDEPENDENT_CODE ON)
-
 target_link_libraries(lib_corpus_search PRIVATE fmt::fmt)
 
-## nlohmann json
+## nlohmann json ##
 FetchContent_Declare(
     json
     URL https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz
@@ -70,10 +73,9 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(json)
 set_property(TARGET nlohmann_json PROPERTY POSITION_INDEPENDENT_CODE ON)
-
 target_link_libraries(lib_corpus_search PUBLIC nlohmann_json::nlohmann_json)
 
-## re2 (version 2023-11-01)
+## re2 (version 2023-11-01) ##
 CPMAddPackage(
     re2
     GITHUB_REPOSITORY "google/re2"
@@ -82,10 +84,9 @@ CPMAddPackage(
     EXCLUDE_FROM_ALL  ON
 )
 set_property(TARGET re2 PROPERTY POSITION_INDEPENDENT_CODE ON)
-
 target_link_libraries(lib_corpus_search PRIVATE re2::re2)
 
-## tokenizers-cpp
+## tokenizers-cpp ##
 CPMAddPackage(
     tokenizers_cpp
     GITHUB_REPOSITORY "mlc-ai/tokenizers-cpp"
@@ -93,10 +94,9 @@ CPMAddPackage(
     EXCLUDE_FROM_ALL  ON
 )
 set_property(TARGET tokenizers_cpp PROPERTY POSITION_INDEPENDENT_CODE ON)
-
 target_link_libraries(lib_corpus_search PRIVATE tokenizers_cpp)
 
-## utf8-cpp header-only library
+## utf8-cpp header-only library ##
 FetchContent_Declare(
     utf8cpp
     GIT_REPOSITORY https://github.com/nemtrif/utfcpp
@@ -107,48 +107,46 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(utf8cpp)
 add_library(utf8cpp INTERFACE)
 target_include_directories(utf8cpp INTERFACE "${utf8cpp_SOURCE_DIR}/source")
-
 target_link_libraries(lib_corpus_search PRIVATE utf8cpp)
 
-## msgpack-cxx
+## msgpack-cxx ##
 CPMAddPackage(
     NAME msgpack-cxx
     GITHUB_REPOSITORY "msgpack/msgpack-c"
     GIT_TAG b0d379a6f29af7dd65423ff78a94de8948f01bd8
     EXCLUDE_FROM_ALL ON
 )
-
 target_link_libraries(lib_corpus_search PUBLIC msgpack-cxx)
 
-## PEGTL
+## PEGTL ##
 CPMAddPackage(
     NAME pegtl
     GITHUB_REPOSITORY "taocpp/PEGTL"
     GIT_TAG "3.2.8"
     EXCLUDE_FROM_ALL ON
 )
-
 target_link_libraries(lib_corpus_search PUBLIC taocpp::pegtl)
 
-## llguidance
+## llguidance ##
 find_package(LLGuidance REQUIRED)
+target_link_libraries(lib_corpus_search PUBLIC LLGuidance::LLGuidance)
 
-target_link_libraries(lib_corpus_search PRIVATE LLGuidance::LLGuidance)
-
-## boost dynamic_bitset
+## boost dynamic_bitset ##
 find_package(Boost REQUIRED)
-
 target_include_directories(lib_corpus_search PRIVATE ${Boost_INCLUDE_DIRS})
 
-## roaring bitmap
+## roaring bitmap ##
 CPMAddPackage(
   NAME roaring
   GITHUB_REPOSITORY "RoaringBitmap/CRoaring"
-  GIT_TAG v2.0.4
+  GIT_TAG "v2.0.4"
   OPTIONS "ENABLE_ROARING_TESTS OFF"
+  EXCLUDE_FROM_ALL ON
 )
-target_link_libraries(lib_corpus_search PRIVATE roaring::roaring)
+target_link_libraries(lib_corpus_search PUBLIC roaring::roaring)
 ##################################################
+##################################################
+
 
 # Postgres extension installation
 execute_process(

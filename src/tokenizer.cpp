@@ -4,6 +4,7 @@
 #include <fstream>
 #include <sstream>
 #include <unordered_map>
+#include <unordered_set>
 
 #include <fmt/core.h>
 #include <fmt/ranges.h>
@@ -154,13 +155,23 @@ tokenizer::tokenizer(std::string tokenizer_json_path,
     // Do other preprocessing stuff
     auto vocab = json["model"]["vocab"];
     for (auto const &[tok_str, tok_id] : vocab.items()) {
-        tid_to_token[tok_id.get<int>()] = to_bytes(tok_str);
+        tid_to_token[tok_id.get<int>()] = unnormalize(to_bytes(tok_str));
+    }
+
+    auto special_tokens = std::unordered_set<int>{};
+    if (json.contains("added_tokens")) {
+        for (auto const &item : json["added_tokens"]) {
+            special_tokens.insert(item["id"].get<int>());
+        }
+    }
+    if (verbose) {
+        fmt::println("Special tokens = {}", fmt::join(special_tokens, ", "));
     }
 
     max_token_bytes = 0;
     auto nchars_to_tid = std::unordered_map<int, std::vector<int>>{};
     for (auto const &[tid, token] : tid_to_token) {
-        if (tid < 2) { // FIXME: special token detection
+        if (special_tokens.contains(tid)) {
             // special token; skip
             continue;
         }
@@ -172,7 +183,6 @@ tokenizer::tokenizer(std::string tokenizer_json_path,
         auto length = utf8::utf8to32(utf8::replace_invalid(token)).size();
         nchars_to_tid[length].push_back(tid);
     }
-
     if (verbose) {
         fmt::println("Max token length in bytes = {}", max_token_bytes);
     }

@@ -329,6 +329,9 @@ auto character_class_range::apply(pegtl::parse_tree::node* node,
                                   char32_t min,
                                   char32_t max) -> cst::character_class_range
 {
+    if (min > max) {
+        throw std::runtime_error("invalid character class range");
+    }
     return {min, max};
 }
 
@@ -607,9 +610,10 @@ auto print(T const& node) -> std::string
             [](auto&& arg) { return fmt::format("character_class_element({})", print(arg)); },
             node.get());
     } else if constexpr (std::is_same_v<T, cst::character_class_range>) {
+        auto printch = [](char32_t ch) { return utf8::utf32to8(std::u32string_view(&ch, 1)); };
         return fmt::format("character_class_range(min='{}', max='{}')",
-                           static_cast<char>(node.min),
-                           static_cast<char>(node.max));
+                           printch(node.min),
+                           printch(node.max));
     } else if constexpr (std::is_same_v<T, cst::character_set>) {
         return std::visit([](auto&& arg) { return fmt::format("character_set({})", print(arg)); },
                           node.get());

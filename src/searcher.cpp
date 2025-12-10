@@ -175,7 +175,7 @@ auto generate_cands(tokenizer const &tok,
     for (int token : next_tokens) {
         assert(token != tok.EOS_TOKEN_ID);
 
-        auto token_str = tok.unnormalize(tok.get_tid_to_token().at(token));
+        auto token_str = tok.get_tid_to_token().at(token);
         auto cur_prefix = prev_prefix + token_str;
         if (level == 0) {
             auto it = cur_prefix.begin();
