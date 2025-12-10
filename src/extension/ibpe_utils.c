@@ -37,9 +37,11 @@ Datum ibpe_handler(PG_FUNCTION_ARGS)
 
     amroutine->amcanorder = false;
     amroutine->amcanorderbyop = false;
+#if PG_MAJORVERSION_NUM >= 18
     amroutine->amcanhash = false;
     amroutine->amconsistentequality = false;
     amroutine->amconsistentordering = false;
+#endif
     amroutine->amcanbackward = false;
     amroutine->amcanunique = false;
     amroutine->amcanmulticol = true;
@@ -65,7 +67,11 @@ Datum ibpe_handler(PG_FUNCTION_ARGS)
     amroutine->amvacuumcleanup = ibpe_vacuumcleanup;
     amroutine->amcanreturn = ibpe_canreturn;
     amroutine->amcostestimate = ibpe_costestimate;
+#if PG_MAJORVERSION_NUM >= 18
     amroutine->amgettreeheight = NULL;
+    amroutine->amtranslatestrategy = NULL;
+    amroutine->amtranslatecmptype = NULL;
+#endif
     amroutine->amoptions = ibpe_options;
     amroutine->amproperty = NULL;
     amroutine->ambuildphasename = NULL;
@@ -81,8 +87,6 @@ Datum ibpe_handler(PG_FUNCTION_ARGS)
     amroutine->amestimateparallelscan = NULL;
     amroutine->aminitparallelscan = NULL;
     amroutine->amparallelrescan = NULL;
-    amroutine->amtranslatestrategy = NULL;
-    amroutine->amtranslatecmptype = NULL;
 
     PG_RETURN_POINTER(amroutine);
 }
