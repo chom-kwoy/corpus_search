@@ -128,6 +128,7 @@ tokenizer::tokenizer(std::string tokenizer_json_path,
 {
     for (auto [from, to] : this->normalize_mapping) {
         inv_normalize_mapping[to] = from;
+        inv_normalize_mapping[from] = to; // switch places with the original symbols
     }
 
     auto const json = load_json_file(tokenizer_json_path);

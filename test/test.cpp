@@ -163,7 +163,7 @@ TEST(Regex, RegexTrie)
                                   my_next_tokens.begin(),
                                   my_next_tokens.end(),
                                   std::back_inserter(symmetric_difference));
-    fmt::println("symmetric difference = {}", fmt::join(symmetric_difference, ", "));
+    fmt::println("symmetric difference = [{}]", fmt::join(symmetric_difference, ", "));
     EXPECT_EQ(symmetric_difference.size(), 0);
 
     std::vector<int> difference;
@@ -176,7 +176,7 @@ TEST(Regex, RegexTrie)
     for (int tid : difference) {
         diff_tokens.push_back(get_tok().get_tid_to_token().at(tid));
     }
-    fmt::println("difference = {} (tokens = {})",
+    fmt::println("difference = [{}] (tokens = [{}])",
                  fmt::join(difference, ", "),
                  fmt::join(diff_tokens, ", "));
     EXPECT_EQ(difference.size(), 0);
