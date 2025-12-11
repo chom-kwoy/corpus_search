@@ -1,6 +1,6 @@
 # This starter workflow is for a CMake project running on a single platform. There is a different starter workflow if you need cross-platform coverage.
 # See: https://github.com/actions/starter-workflows/blob/main/ci/cmake-multi-platform.yml
-name: CMake on a single platform
+name: CMake Build
 
 on:
   push:
@@ -36,7 +36,10 @@ jobs:
     - name: Remove existing postgres
       run: sudo apt --purge remove postgresql postgresql-*
 
-    - name: Install postgres
+    - name: Add postgres repository
+      run: sudo apt update && sudo apt install gnupg2 wget && sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list' && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg && sudo apt update
+
+    - name: Install postgres 18
       run: sudo apt install -y postgresql-18 postgresql-contrib-18 postgresql-server-dev-18
 
     - name: Configure CMake
