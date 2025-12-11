@@ -21,10 +21,17 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    - uses: baptiste0928/cargo-install@v3
+
+    - name: Setup rust
+      uses: actions-rs/install@v0.1
+      with:
+         crate: cargo-audit
+         version: latest
+
+    - run: cargo audit
     
     - name: Install dependencies
-      run: sudo apt install -y libabsl-dev libicu-dev libboost-dev
+      run: apt install -y libabsl-dev libicu-dev libboost-dev
 
     - name: Configure CMake
       # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
