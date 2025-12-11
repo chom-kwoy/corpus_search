@@ -21,13 +21,10 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    - uses: actions-rust-lang/setup-rust-toolchain@v1
+    - uses: baptiste0928/cargo-install@v3
     
     - name: Install dependencies
       run: sudo apt install -y libabsl-dev libicu-dev libboost-dev
-
-    - name: Install rustc
-      run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
     - name: Configure CMake
       # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
