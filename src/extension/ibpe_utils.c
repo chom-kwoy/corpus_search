@@ -221,6 +221,9 @@ void ibpe_costestimate(struct PlannerInfo *root,
     /* Use generic estimate */
     genericcostestimate(root, path, loop_count, &costs);
 
+    costs.indexTotalCost = 0.1;
+    costs.indexSelectivity = 0.01;
+
     elog(NOTICE,
          "indexStartupCost=%lf, indexTotalCost=%lf, indexSelectivity=%lf, "
          "indexCorrelation=%lf, numIndexPages=%lf",
