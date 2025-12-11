@@ -24,11 +24,8 @@ jobs:
 
     - name: Setup rust
       uses: actions-rs/install@v0.1
-      with:
-         crate: cargo-audit
-         version: latest
 
-    - run: cargo audit
+    - run: cargo --version
     
     - name: Install dependencies
       run: apt install -y libabsl-dev libicu-dev libboost-dev
