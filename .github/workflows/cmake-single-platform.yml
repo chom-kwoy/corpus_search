@@ -33,6 +33,12 @@ jobs:
     - name: Install dependencies
       run: sudo apt install -y libabsl-dev libicu-dev libboost-dev
 
+    - name: Remove existing postgres
+      run: sudo apt --purge remove postgresql postgresql-*
+
+    - name: Install postgres
+      run: sudo apt install -y postgresql-18 postgresql-contrib-18 postgresql-server-dev-18
+
     - name: Configure CMake
       # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
       # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type

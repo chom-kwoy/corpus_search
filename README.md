@@ -1,4 +1,5 @@
 # corpus_search
+[![CMake on a single platform](https://github.com/chom-kwoy/corpus_search/actions/workflows/cmake-single-platform.yml/badge.svg)](https://github.com/chom-kwoy/corpus_search/actions/workflows/cmake-single-platform.yml)
 
 corpus_search is a library for efficient corpus search.
 
