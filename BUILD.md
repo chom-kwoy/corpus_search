@@ -13,3 +13,8 @@ $ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 $ cmake -DCMAKE_BUILD_TYPE=Release -S . -B build
 $ cmake --build build --parallel
 ```
+
+## Install Postgres extension
+```bash
+$ cmake --install build
+```

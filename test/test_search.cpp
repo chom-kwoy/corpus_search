@@ -5,8 +5,6 @@
 
 #include <chrono>
 #include <fmt/chrono.h>
-#include <llguidance.h>
-#include <nlohmann/json.hpp>
 
 #include "searcher.hpp"
 
@@ -43,17 +41,30 @@ static auto measure_time(std::string search_term) -> std::vector<sentid_t>
     return result;
 }
 
-TEST(Searcher, SearchStringSimple)
+class Searcher : public ::testing::Test
 {
-    get_tok(), get_index();
+protected:
+    // Called once before the first test in this test suite
+    static void SetUpTestSuite() { get_tok(), get_index(); }
 
+    // Called once after the last test in this test suite
+    static void TearDownTestSuite() {}
+};
+
+TEST_F(Searcher, SearchStringSimple)
+{
     EXPECT_EQ(measure_time("ho").size(), 811'085);
     EXPECT_EQ(measure_time("z").size(), 20'621);
     EXPECT_EQ(measure_time("o").size(), 1'286'817);
     EXPECT_EQ(measure_time("TT").size(), 0);
 }
 
-TEST(Searcher, SearchStringHard)
+TEST_F(Searcher, SearchStringMatchAll)
+{
+    EXPECT_EQ(measure_time(".*").size(), 100000000);
+}
+
+TEST_F(Searcher, SearchStringHard)
 {
     get_tok(), get_index();
 
@@ -66,7 +77,7 @@ TEST(Searcher, SearchStringHard)
     EXPECT_EQ(measure_time("家non").size(), 59);
 }
 
-TEST(Searcher, SearchRegexEasy)
+TEST_F(Searcher, SearchRegexEasy)
 {
     get_tok(), get_index();
 
@@ -74,10 +85,16 @@ TEST(Searcher, SearchRegexEasy)
     EXPECT_EQ(measure_time("w[ou]\\.toy").size(), 44'782);
 }
 
-TEST(Searcher, SearchRegexHard)
+TEST_F(Searcher, SearchRegexHard1)
 {
     get_tok(), get_index();
 
     EXPECT_EQ(measure_time("(k[aeiou]\\.){3}k").size(), 0);
+}
+
+TEST_F(Searcher, SearchRegexHard2)
+{
+    get_tok(), get_index();
+
     EXPECT_EQ(measure_time(HANJA_RE "`i").size(), 61'261);
 }

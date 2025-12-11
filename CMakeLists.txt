@@ -216,7 +216,7 @@ FetchContent_MakeAvailable(googletest)
 enable_testing()
 
 add_executable(test_corpus_search
-    test/test.cpp
+    test/test_search.cpp
     test/test_regex.cpp
 )
 
