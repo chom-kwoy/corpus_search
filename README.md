@@ -1,8 +1,9 @@
 # corpus_search
 [![Build](https://github.com/chom-kwoy/corpus_search/actions/workflows/cmake-single-platform.yml/badge.svg)](https://github.com/chom-kwoy/corpus_search/actions/workflows/cmake-single-platform.yml)
 
-corpus_search is a library for efficient corpus search.
+corpus_search is a library and a PostgreSQL extension for efficient regex corpus search.
 
+See [BUILD.md](BUILD.md) for build instructions.
 
 # Testing commands
 
