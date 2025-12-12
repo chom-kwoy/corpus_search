@@ -104,3 +104,10 @@ TEST_F(Searcher, SearchRegexHard2)
 
     EXPECT_EQ(measure_time(HANJA_RE "`i").size(), 61'261);
 }
+
+TEST_F(Searcher, SearchRegexHard3)
+{
+    get_tok(), get_index();
+
+    EXPECT_EQ(measure_time("....pskuy").size(), 776);
+}
