@@ -240,6 +240,12 @@ auto search(tokenizer const &tok,
                  fmt::join(dfa.accept_states, ", "),
                  dfa.num_states);
 
+    if (dfa.accept_states.contains(dfa.start_state)) {
+        // every string matches
+        fmt::println("DFA accepts empty string; returning all sentence IDs.");
+        return get_sent_ids(index(tok.EOS_TOKEN_ID));
+    }
+
     auto begin_time = std::chrono::high_resolution_clock::now();
     auto trie = dfa_trie(tok);
     auto elapsed = std::chrono::high_resolution_clock::now() - begin_time;
@@ -254,14 +260,6 @@ auto search(tokenizer const &tok,
         auto next_tokens = trie.get_next_tids(dfa, dfa.start_state, p);
 
         fmt::println("p={}\nlvl {}: '{}' (+ {} tokens)", p, 0, "", next_tokens.cardinality());
-
-        auto copy = next_tokens;
-        copy.flip(0, tok.vocab_size());
-        std::vector<int> not_selected;
-        for (int t : copy) {
-            not_selected.push_back(t);
-        }
-        fmt::println("tokens not selected = [{}]", fmt::join(not_selected, ", "));
 
         for (auto tid : next_tokens) {
             auto matches = index(tid);

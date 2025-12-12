@@ -59,9 +59,14 @@ TEST_F(Searcher, SearchStringSimple)
     EXPECT_EQ(measure_time("TT").size(), 0);
 }
 
-TEST_F(Searcher, SearchStringMatchAll)
+TEST_F(Searcher, SearchRegexMatchAll)
 {
-    EXPECT_EQ(measure_time(".*").size(), 100000000);
+    EXPECT_EQ(measure_time(".*").size(), 1'734'021);
+}
+
+TEST_F(Searcher, SearchRegexInfinite)
+{
+    EXPECT_EQ(measure_time(".*abc").size(), 1'734'021);
 }
 
 TEST_F(Searcher, SearchStringHard)
