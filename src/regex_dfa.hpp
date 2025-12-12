@@ -27,6 +27,8 @@ struct graph
 
 auto ast_to_dfa(ast::node const& node) -> sm::graph;
 
+auto dfa_match(sm::graph const& dfa, std::string str) -> bool;
+
 } // namespace corpus_search::regex
 
 #endif // REGEX_DFA_HPP

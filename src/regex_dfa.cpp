@@ -141,6 +141,9 @@ auto ast_to_dfa(ast::node const& node) -> sm::graph
             }
         }
     }
+    sm::graph result;
+    result.start_state = 0;
+    result.num_states = 1;
 
     std::vector<std::set<int>> states;
     std::map<std::set<int>, int> seen_states;
@@ -149,9 +152,10 @@ auto ast_to_dfa(ast::node const& node) -> sm::graph
     states.push_back(init_state);
     seen_states[init_state] = 0;
 
-    sm::graph result;
-    result.start_state = 0;
-    result.num_states = 1;
+    // initial state could be also accept state
+    if (init_state.contains(final_pos)) {
+        result.accept_states.insert(0);
+    }
 
     for (int i = 0; i < states.size(); ++i) {
         auto const& state = states[i];
@@ -221,6 +225,8 @@ auto ast_to_dfa(ast::node const& node) -> sm::graph
         }
         result.edges[i] = std::move(vec);
     }
+
+    assert(result.accept_states.size() > 0);
 
     return result;
 }

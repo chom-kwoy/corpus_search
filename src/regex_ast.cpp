@@ -319,8 +319,9 @@ static auto convert(T const& node) -> ast::node
         set.runOptimize();
         return bitmap_to_node(set);
     } else if constexpr (std::is_same_v<T, cst::character_set>) {
-        roaring::Roaring set = std::visit([](auto&& arg) { return character_set(arg); }, node.get());
-        return {ast::node_empty{}};
+        auto set = std::visit([](auto&& arg) { return character_set(arg); }, node.get());
+        set.runOptimize();
+        return bitmap_to_node(set);
     } else if constexpr (std::is_same_v<T, char32_t>) {
         auto str = utf8::utf32to8(std::u32string_view(&node, 1));
         if (str.size() == 1) {

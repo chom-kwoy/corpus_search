@@ -151,6 +151,7 @@ auto merge_sorted_lists(std::vector<pointer_or_object> const &cand_lists) -> std
 }
 
 auto generate_cands(int state,
+                    std::set<int> &visiting_states,
                     std::string const &prev_prefix, // for debugging only
                     tokenizer const &tok,
                     regex::sm::graph const &dfa,
@@ -191,7 +192,21 @@ auto generate_cands(int state,
             continue;
         }
 
-        auto cands = generate_cands(new_state, cur_prefix, tok, dfa, trie, index, cache, level + 1);
+        if (visiting_states.contains(new_state)) {
+            throw std::runtime_error("infinite recursion detected");
+        }
+
+        visiting_states.insert(new_state);
+        auto cands = generate_cands(new_state,
+                                    visiting_states,
+                                    cur_prefix,
+                                    tok,
+                                    dfa,
+                                    trie,
+                                    index,
+                                    cache,
+                                    level + 1);
+        visiting_states.erase(new_state);
         cand_lists.push_back(followed_by(std::move(matches), cands));
     }
 
@@ -234,10 +249,19 @@ auto search(tokenizer const &tok,
     auto cand_lists = std::vector<pointer_or_object>{};
 
     std::unordered_map<int, std::vector<index_entry>> cache;
+    std::set<int> visiting_states = {dfa.start_state};
     for (int p = 0; p < tok.max_token_bytes(); ++p) {
         auto next_tokens = trie.get_next_tids(dfa, dfa.start_state, p);
 
         fmt::println("p={}\nlvl {}: '{}' (+ {} tokens)", p, 0, "", next_tokens.cardinality());
+
+        auto copy = next_tokens;
+        copy.flip(0, tok.vocab_size());
+        std::vector<int> not_selected;
+        for (int t : copy) {
+            not_selected.push_back(t);
+        }
+        fmt::println("tokens not selected = [{}]", fmt::join(not_selected, ", "));
 
         for (auto tid : next_tokens) {
             auto matches = index(tid);
@@ -249,10 +273,23 @@ auto search(tokenizer const &tok,
             int new_state = trie.consume_token(dfa, dfa.start_state, token_str);
             assert(new_state != dfa_trie::REJECTED);
 
+            if (visiting_states.contains(new_state)) {
+                throw std::runtime_error("infinite recursion detected");
+            }
+
             if (new_state == dfa_trie::ACCEPTED) {
                 cand_lists.push_back(matches);
             } else {
-                auto cands = generate_cands(new_state, token_str, tok, dfa, trie, index, cache);
+                visiting_states.insert(new_state);
+                auto cands = generate_cands(new_state,
+                                            visiting_states,
+                                            token_str,
+                                            tok,
+                                            dfa,
+                                            trie,
+                                            index,
+                                            cache);
+                visiting_states.erase(new_state);
                 cand_lists.push_back(followed_by(std::move(matches), cands));
             }
         }

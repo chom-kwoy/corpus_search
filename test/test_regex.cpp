@@ -9,17 +9,8 @@
 
 #include "dfa_trie.hpp"
 
-static auto test_parse(std::string regex) -> corpus_search::regex::sm::graph
+static void print_dfa(corpus_search::regex::sm::graph const& dfa)
 {
-    fmt::println("Regex: {}", regex);
-
-    auto cst = corpus_search::regex::parse(regex);
-    fmt::println("CST: {}", corpus_search::regex::print_cst(cst));
-
-    auto ast = corpus_search::regex::cst_to_ast(cst);
-    fmt::println("AST: {}", corpus_search::regex::print_ast(ast));
-
-    auto dfa = corpus_search::regex::ast_to_dfa(ast);
     fmt::println("DFA: start_state={}, accept_states=[{}], num_states={}",
                  dfa.start_state,
                  fmt::join(dfa.accept_states, ", "),
@@ -41,6 +32,20 @@ static auto test_parse(std::string regex) -> corpus_search::regex::sm::graph
                          edge.target_state);
         }
     };
+}
+
+static auto test_parse(std::string regex) -> corpus_search::regex::sm::graph
+{
+    fmt::println("Regex: {}", regex);
+
+    auto cst = corpus_search::regex::parse(regex);
+    fmt::println("CST: {}", corpus_search::regex::print_cst(cst));
+
+    auto ast = corpus_search::regex::cst_to_ast(cst);
+    fmt::println("AST: {}", corpus_search::regex::print_ast(ast));
+
+    auto dfa = corpus_search::regex::ast_to_dfa(ast);
+    print_dfa(dfa);
 
     fmt::println("");
     std::fflush(stdout);
@@ -152,6 +157,24 @@ static auto load_llg_tokenizer(corpus_search::tokenizer const& tok,
 TEST(Regex, RegexOptional)
 {
     test_parse("cho\\.cw?o\\.ni");
+}
+
+TEST(Regex, DFAStar)
+{
+    using namespace corpus_search::regex;
+    auto ast = ast::node{ast::node_star{
+        {ast::node_range{0, 255}},
+    }};
+
+    fmt::println("AST: {}", corpus_search::regex::print_ast(ast));
+
+    auto dfa = corpus_search::regex::ast_to_dfa(ast);
+    print_dfa(dfa);
+}
+
+TEST(Regex, RegexMatchAll)
+{
+    test_parse(".*");
 }
 
 TEST(Regex, Regex)
