@@ -13,6 +13,7 @@ struct node_table
     std::set<int> firstpos;
     std::set<int> lastpos;
     bool nullable;
+
     node_type type = node_type::other;
     std::vector<int> children{};
 };
@@ -27,81 +28,79 @@ struct mark_state
 
     // leaf pos -> character range
     std::map<int, ast::node_range> leaf_map{};
+
+    auto visit_ast(ast::node const& node) -> node_table
+    {
+        const int my_pos = cur_pos;
+        const int my_index = cur_index++;
+
+        auto pos = std::visit(
+            [my_pos, this](auto&& node) -> node_table {
+                using T = std::decay_t<decltype(node)>;
+                if constexpr (std::is_same_v<T, ast::node_empty>) {
+                    if (node.assertion != ast::assertion_kind::none) {
+                        // TODO: handle assertions
+                        throw std::runtime_error("Assertions not implemented");
+                    }
+                    return {{}, {}, true};
+                } else if constexpr (std::is_same_v<T, ast::node_range>) {
+                    cur_pos++;
+                    leaf_map[my_pos] = node;
+                    return {{my_pos}, {my_pos}, false};
+                } else if constexpr (std::is_same_v<T, ast::node_union>) {
+                    auto result = node_table{};
+                    result.nullable = false;
+                    for (auto&& arg : node.args) {
+                        auto p = visit_ast(arg);
+                        result.firstpos.insert(p.firstpos.begin(), p.firstpos.end());
+                        result.lastpos.insert(p.lastpos.begin(), p.lastpos.end());
+                        result.nullable = result.nullable || p.nullable;
+                    }
+                    return result;
+                } else if constexpr (std::is_same_v<T, ast::node_concat>) {
+                    assert(node.args.size() == 2);
+
+                    auto result = node_table{};
+                    result.type = node_type::concat;
+
+                    int ch0_idx = cur_index;
+                    auto p0 = visit_ast(node.args[0]);
+                    result.children.push_back(ch0_idx);
+
+                    int ch1_idx = cur_index;
+                    auto p1 = visit_ast(node.args[1]);
+                    result.children.push_back(ch1_idx);
+
+                    result.nullable = p0.nullable && p1.nullable;
+                    result.firstpos.insert(p0.firstpos.begin(), p0.firstpos.end());
+                    if (p0.nullable) {
+                        result.firstpos.insert(p1.firstpos.begin(), p1.firstpos.end());
+                    }
+
+                    result.lastpos.insert(p1.lastpos.begin(), p1.lastpos.end());
+                    if (p1.nullable) {
+                        result.lastpos.insert(p0.lastpos.begin(), p0.lastpos.end());
+                    }
+
+                    return result;
+                } else if constexpr (std::is_same_v<T, ast::node_star>) {
+                    int ch_idx = cur_index;
+                    auto p = visit_ast(node.arg);
+                    auto result = node_table{};
+                    result.firstpos = p.firstpos;
+                    result.lastpos = p.lastpos;
+                    result.nullable = true;
+                    result.type = node_type::star;
+                    return result;
+                }
+            },
+            node.get());
+
+        nodes[my_index] = pos;
+
+        return pos;
+    }
 };
-
-auto mark(ast::node const& node, mark_state& state) -> node_table
-{
-    const int my_pos = state.cur_pos;
-    const int my_index = state.cur_index++;
-
-    auto pos = std::visit(
-        [my_pos, &state](auto&& node) -> node_table {
-            using T = std::decay_t<decltype(node)>;
-            if constexpr (std::is_same_v<T, ast::node_empty>) {
-                if (node.assertion != ast::assertion_kind::none) {
-                    // TODO: handle assertions
-                    throw std::runtime_error("Assertions not implemented");
-                }
-                return {{}, {}, true};
-            } else if constexpr (std::is_same_v<T, ast::node_range>) {
-                state.cur_pos++;
-                state.leaf_map[my_pos] = node;
-                return {{my_pos}, {my_pos}, false};
-            } else if constexpr (std::is_same_v<T, ast::node_union>) {
-                auto result = node_table{};
-                result.nullable = false;
-                for (auto&& arg : node.args) {
-                    int ch_idx = state.cur_index;
-                    auto p = mark(arg, state);
-                    result.firstpos.insert(p.firstpos.begin(), p.firstpos.end());
-                    result.lastpos.insert(p.lastpos.begin(), p.lastpos.end());
-                    result.nullable = result.nullable || p.nullable;
-                    result.children.push_back(ch_idx);
-                }
-                return result;
-            } else if constexpr (std::is_same_v<T, ast::node_concat>) {
-                assert(node.args.size() == 2);
-
-                auto result = node_table{};
-                result.type = node_type::concat;
-
-                int ch0_idx = state.cur_index;
-                auto p0 = mark(node.args[0], state);
-                result.children.push_back(ch0_idx);
-
-                int ch1_idx = state.cur_index;
-                auto p1 = mark(node.args[1], state);
-                result.children.push_back(ch1_idx);
-
-                result.nullable = p0.nullable && p1.nullable;
-                result.firstpos.insert(p0.firstpos.begin(), p0.firstpos.end());
-                if (p0.nullable) {
-                    result.firstpos.insert(p1.firstpos.begin(), p1.firstpos.end());
-                }
-
-                result.lastpos.insert(p1.lastpos.begin(), p1.lastpos.end());
-                if (p1.nullable) {
-                    result.lastpos.insert(p0.lastpos.begin(), p0.lastpos.end());
-                }
-
-                return result;
-            } else if constexpr (std::is_same_v<T, ast::node_star>) {
-                int ch_idx = state.cur_index;
-                auto p = mark(node.arg, state);
-                auto result = node_table{};
-                result.firstpos = p.firstpos;
-                result.lastpos = p.lastpos;
-                result.nullable = true;
-                result.type = node_type::star;
-                return result;
-            }
-        },
-        node.get());
-
-    state.nodes[my_index] = pos;
-
-    return pos;
-}
 
 struct comparator
 {
@@ -111,6 +110,56 @@ struct comparator
     }
 };
 
+static auto merge_identical_states(sm::graph dfa) -> sm::graph
+{
+    using state_key = std::pair<std::set<sm::transition>, bool>;
+
+    bool is_changed;
+    do {
+        std::map<state_key, int> unique_states;
+        std::map<int, int> old_to_new_state;
+
+        is_changed = false;
+        for (auto&& [state_id, transition] : dfa.edges) {
+            auto key = state_key{
+                {transition.begin(), transition.end()},
+                dfa.accept_states.contains(state_id),
+            };
+            if (unique_states.contains(key)) {
+                old_to_new_state[state_id] = unique_states[key];
+                is_changed = true;
+            } else {
+                int new_id = unique_states.size();
+                old_to_new_state[state_id] = new_id;
+                unique_states[key] = new_id;
+            }
+        }
+
+        sm::graph result;
+        result.start_state = old_to_new_state.at(dfa.start_state);
+        result.num_states = unique_states.size();
+        for (int state : dfa.accept_states) {
+            result.accept_states.insert(old_to_new_state.at(state));
+        }
+        for (auto&& [state_id, transitions] : dfa.edges) {
+            int new_id = old_to_new_state.at(state_id);
+            if (result.edges.contains(new_id)) {
+                continue;
+            }
+            result.edges[new_id] = {};
+            for (auto&& tr : transitions) {
+                int new_target = old_to_new_state.at(tr.target_state);
+                result.edges[new_id].push_back({tr.range, new_target});
+            }
+        }
+
+        dfa = std::move(result);
+
+    } while (is_changed);
+
+    return dfa;
+}
+
 // McNaughton-Yamada-Thompson algorithm
 auto ast_to_dfa(ast::node const& node) -> sm::graph
 {
@@ -119,26 +168,23 @@ auto ast_to_dfa(ast::node const& node) -> sm::graph
         {ast::node_range{}},
     }}};
 
+    // fill firstpos, lastpos, and nullable
     mark_state visit_state{};
+    visit_state.visit_ast(aug_node);
+
     auto const& nodes = visit_state.nodes;
     auto const& leaf_map = visit_state.leaf_map;
-    mark(aug_node, visit_state);
-    const int final_pos = visit_state.cur_pos - 1;
+    int const final_pos = visit_state.cur_pos - 1;
 
     auto followpos = std::vector<std::set<int>>(visit_state.cur_pos);
     for (int i = 0; i < nodes.size(); ++i) {
         auto const& pos = nodes.at(i);
 
         if (pos.type == node_type::concat) {
-            int last_ch_idx = -1;
-            for (int ch_idx : pos.children) {
-                auto const& child = nodes.at(ch_idx);
-                if (last_ch_idx != -1) {
-                    for (int p : nodes.at(last_ch_idx).lastpos) {
-                        followpos[p].insert(child.firstpos.begin(), child.firstpos.end());
-                    }
-                }
-                last_ch_idx = ch_idx;
+            int ch0_idx = pos.children[0];
+            const auto ch1 = nodes.at(pos.children[1]);
+            for (int p : nodes.at(ch0_idx).lastpos) {
+                followpos[p].insert(ch1.firstpos.begin(), ch1.firstpos.end());
             }
         } else if (pos.type == node_type::star) {
             for (int p : pos.lastpos) {
@@ -147,24 +193,24 @@ auto ast_to_dfa(ast::node const& node) -> sm::graph
         }
     }
 
+    std::vector<std::set<int>> states;
+    std::map<std::set<int>, int> seen_states;
+
     sm::graph result;
     result.start_state = 0;
     result.num_states = 1;
-
-    std::vector<std::set<int>> states;
-    std::map<std::set<int>, int> seen_states;
 
     auto init_state = nodes.at(0).firstpos;
     states.push_back(init_state);
     seen_states[init_state] = 0;
 
-    // initial state could be also accept state
+    // initial state could also be an accept state
     if (init_state.contains(final_pos)) {
         result.accept_states.insert(0);
     }
 
-    for (int i = 0; i < states.size(); ++i) {
-        auto const& state = states[i];
+    for (int s = 0; s < states.size(); ++s) {
+        auto const& state = states[s];
 
         auto transitions = std::map<ast::node_range, std::set<int>, comparator>{};
         for (int p : state) {
@@ -216,7 +262,7 @@ auto ast_to_dfa(ast::node const& node) -> sm::graph
             }
         }
 
-        std::vector<sm::transition> vec;
+        auto vec = std::vector<sm::transition>{};
         for (auto&& [range, new_state] : transitions) {
             // add as new state if not seen before
             if (seen_states.count(new_state) == 0) {
@@ -227,14 +273,17 @@ auto ast_to_dfa(ast::node const& node) -> sm::graph
                     result.accept_states.insert(new_state_id);
                 }
             }
-            vec.push_back(sm::transition{range, seen_states[new_state]});
+            vec.push_back(sm::transition{
+                range,
+                seen_states[new_state],
+            });
         }
-        result.edges[i] = std::move(vec);
+        result.edges[s] = std::move(vec);
     }
 
     assert(result.accept_states.size() > 0);
 
-    return result;
+    return merge_identical_states(std::move(result));
 }
 
 auto sm::graph::next_state(int state, char ch) const -> int

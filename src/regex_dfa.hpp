@@ -13,6 +13,12 @@ struct transition
 {
     ast::node_range range;
     int target_state;
+
+    bool operator<(const transition& other) const
+    {
+        return std::make_tuple(range.min, range.max, target_state)
+               < std::make_tuple(other.range.min, other.range.max, other.target_state);
+    }
 };
 
 struct graph
