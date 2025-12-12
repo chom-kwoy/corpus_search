@@ -2,6 +2,7 @@
 #include "ibpe_backend.h"
 #include "ibpe_build.h"
 #include "ibpe_scan.h"
+#include "ibpe_vacuum.h"
 
 #include <string.h>
 
@@ -181,23 +182,6 @@ bool ibpe_canreturn(Relation indexRelation, int attno)
 {
     elog(NOTICE, "ibpe_canreturn called with %d", attno);
     return true;
-}
-
-/* bulk delete */
-IndexBulkDeleteResult *ibpe_bulkdelete(IndexVacuumInfo *info,
-                                       IndexBulkDeleteResult *stats,
-                                       IndexBulkDeleteCallback callback,
-                                       void *callback_state)
-{
-    // TODO
-    elog(ERROR, "ibpe_bulkdelete: Not implemented");
-}
-
-/* post-VACUUM cleanup */
-IndexBulkDeleteResult *ibpe_vacuumcleanup(IndexVacuumInfo *info, IndexBulkDeleteResult *stats)
-{
-    // TODO
-    elog(ERROR, "ibpe_vacuumcleanup: Not implemented");
 }
 
 /* estimate cost of an indexscan */
