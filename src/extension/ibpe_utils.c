@@ -227,6 +227,6 @@ void ibpe_costestimate(struct PlannerInfo *root,
 /* validate definition of an opclass for this AM */
 bool ibpe_validate(Oid opclassoid)
 {
-    // TODO
-    elog(ERROR, "ibpe_validate: Not implemented");
+    elog(WARNING, "ibpe_validate: Not implemented. always returning true..");
+    return true;
 }
