@@ -34,7 +34,9 @@ static void print_dfa(corpus_search::regex::sm::graph const& dfa)
     };
 }
 
-static auto test_parse(std::string regex) -> corpus_search::regex::sm::graph
+static auto test_parse(std::string regex,
+                       std::vector<std::pair<std::string, bool>> test_strings = {})
+    -> corpus_search::regex::sm::graph
 {
     fmt::println("Regex: {}", regex);
 
@@ -49,6 +51,16 @@ static auto test_parse(std::string regex) -> corpus_search::regex::sm::graph
 
     fmt::println("");
     std::fflush(stdout);
+
+    for (auto&& [test_string, expected] : test_strings) {
+        if (expected) {
+            EXPECT_TRUE(dfa.match(test_string))
+                << "Regex " << regex << " should match string " << test_string;
+        } else {
+            EXPECT_FALSE(dfa.match(test_string))
+                << "Regex " << regex << " should not match string " << test_string;
+        }
+    }
 
     return dfa;
 }
@@ -154,9 +166,54 @@ static auto load_llg_tokenizer(corpus_search::tokenizer const& tok,
     return ll_tokenizer;
 }
 
+TEST(Regex, Regex)
+{
+    test_parse(HANJA_RE "`i",
+               {
+                   {"國`i", true},
+                   {"12`i", false},
+                   {"國`", false},
+                   {"", false},
+               });
+    test_parse("(k[aeiou]\\.){3}k",
+               {
+                   {"ka.ka.ka.k", true},
+                   {"ke.ko.ku.k", true},
+                   {"kka.ka.ka.k", false},
+                   {"ka.ka.ka.", false},
+               });
+    test_parse("a(a|ba)*|c*a",
+               {
+                   {"aa", true},
+                   {"abaa", true},
+                   {"cca", true},
+                   {"abaacca", false},
+               });
+    test_parse("a+b+",
+               {
+                   {"aab", true},
+                   {"aa", false},
+                   {"", false},
+                   {"abbbbb", true},
+               });
+    test_parse("abc[^a-zA-Z]+?(?<name>st|uv)(?:pid)*\\?",
+               {
+                   {"abc가나다st?", true},
+                   {"abcst?", false},
+                   {"abc012uvpidpid?", true},
+                   {"abc012udvpidpid?", false},
+               });
+}
+
 TEST(Regex, RegexOptional)
 {
-    test_parse("cho\\.cw?o\\.ni");
+    test_parse("cho\\.cw?o\\.ni",
+               {
+                   {"cho.cwo.ni", true},
+                   {"cho.co.ni", true},
+                   {"cho.co.nii", false},
+                   {"cho.cwwo.ni", false},
+               });
 }
 
 TEST(Regex, DFAStar)
@@ -174,25 +231,67 @@ TEST(Regex, DFAStar)
 
 TEST(Regex, RegexMatchAll)
 {
-    test_parse(".*");
+    test_parse(".*",
+               {
+                   {"", true},
+                   {"adsfdsaf", true},
+                   {"가나다", true},
+                   {"cho.c가나다wwo.ni", true},
+               });
 }
 
 TEST(Regex, RegexEscapeCharSet)
 {
-    test_parse("\\w");
-    test_parse("\\W");
-    test_parse("\\d");
-    test_parse("\\D");
-    test_parse("\\s");
-    test_parse("\\S");
-}
-
-TEST(Regex, Regex)
-{
-    test_parse(HANJA_RE "`i");
-    test_parse("(k[aeiou]\\.){3}k");
-    test_parse("a(a|ba)*|c*a");
-    test_parse("abc[^a-zA-Z]+?(?<name>st|uv)(?:pid)*\\?");
+    test_parse("\\w",
+               {
+                   {"s", true},
+                   {"_", true},
+                   {"0", true},
+                   {"-", false},
+                   {",", false},
+               });
+    test_parse("\\W",
+               {
+                   {"s", false},
+                   {"_", false},
+                   {"0", false},
+                   {"-", true},
+                   {",", true},
+               });
+    test_parse("\\d",
+               {
+                   {"s", false},
+                   {"_", false},
+                   {"0", true},
+                   {"-", false},
+                   {",", false},
+               });
+    test_parse("\\D",
+               {
+                   {"s", true},
+                   {"_", true},
+                   {"0", false},
+                   {"-", true},
+                   {",", true},
+               });
+    test_parse("\\s",
+               {
+                   {" ", true},
+                   {"s", false},
+                   {"_", false},
+                   {"0", false},
+                   {"-", false},
+                   {",", false},
+               });
+    test_parse("\\S",
+               {
+                   {" ", false},
+                   {"s", true},
+                   {"_", true},
+                   {"0", true},
+                   {"-", true},
+                   {",", true},
+               });
 }
 
 TEST(Regex, RegexComplex)

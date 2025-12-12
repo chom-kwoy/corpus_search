@@ -9,7 +9,6 @@
 #include <msgpack.hpp>
 #include <nlohmann/json.hpp>
 #include <queue>
-#include <re2/re2.h>
 #include <tokenizers_cpp.h>
 #include <utf8.h>
 

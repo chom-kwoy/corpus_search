@@ -74,17 +74,6 @@ FetchContent_MakeAvailable(json)
 set_property(TARGET nlohmann_json PROPERTY POSITION_INDEPENDENT_CODE ON)
 target_link_libraries(lib_corpus_search PUBLIC nlohmann_json::nlohmann_json)
 
-## re2 (version 2023-11-01) ##
-CPMAddPackage(
-    re2
-    GITHUB_REPOSITORY "google/re2"
-    GIT_TAG           "2023-11-01"
-    OPTIONS           "RE2_USE_ICU ON"
-    EXCLUDE_FROM_ALL  ON
-)
-set_property(TARGET re2 PROPERTY POSITION_INDEPENDENT_CODE ON)
-target_link_libraries(lib_corpus_search PRIVATE re2::re2)
-
 ## tokenizers-cpp ##
 CPMAddPackage(
     tokenizers_cpp
@@ -222,7 +211,22 @@ add_executable(test_corpus_search
     test/test_regex.cpp
 )
 
+###########################################
+##### Libraries required for testing ######
+## re2 (version 2023-11-01) ##
+CPMAddPackage(
+    re2
+    GITHUB_REPOSITORY "google/re2"
+    GIT_TAG           "2023-11-01"
+    OPTIONS           "RE2_USE_ICU ON"
+    EXCLUDE_FROM_ALL  ON
+)
+set_property(TARGET re2 PROPERTY POSITION_INDEPENDENT_CODE ON)
+target_link_libraries(lib_corpus_search PRIVATE re2::re2)
+
+## LLGuidance ##
 find_package(LLGuidance REQUIRED)
+###########################################
 
 target_link_libraries(test_corpus_search PUBLIC
     lib_corpus_search

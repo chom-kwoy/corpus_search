@@ -1,5 +1,6 @@
 #include "regex_dfa.hpp"
 
+#include <algorithm>
 #include <map>
 #include <ranges>
 #include <set>
@@ -37,6 +38,10 @@ auto mark(ast::node const& node, mark_state& state) -> node_table
         [my_pos, &state](auto&& node) -> node_table {
             using T = std::decay_t<decltype(node)>;
             if constexpr (std::is_same_v<T, ast::node_empty>) {
+                if (node.assertion != ast::assertion_kind::none) {
+                    // TODO: handle assertions
+                    throw std::runtime_error("Assertions not implemented");
+                }
                 return {{}, {}, true};
             } else if constexpr (std::is_same_v<T, ast::node_range>) {
                 state.cur_pos++;
@@ -141,6 +146,7 @@ auto ast_to_dfa(ast::node const& node) -> sm::graph
             }
         }
     }
+
     sm::graph result;
     result.start_state = 0;
     result.num_states = 1;
@@ -229,6 +235,43 @@ auto ast_to_dfa(ast::node const& node) -> sm::graph
     assert(result.accept_states.size() > 0);
 
     return result;
+}
+
+auto sm::graph::next_state(int state, char ch) const -> int
+{
+    int const idx = ch & 0xFF;
+
+    // binary search for range containing idx
+    auto const& e_list = edges.at(state);
+    auto ubound = std::upper_bound(e_list.begin(),
+                                   e_list.end(),
+                                   regex::sm::transition{{idx}},
+                                   [](auto const& a, auto const& b) {
+                                       return a.range.min < b.range.min;
+                                   });
+    if (ubound != e_list.begin()) {
+        --ubound;
+    }
+
+    if (ubound != e_list.end()) {
+        if (ubound->range.min <= idx && idx <= ubound->range.max) {
+            return ubound->target_state;
+        }
+    }
+
+    return -1;
+}
+
+auto sm::graph::match(std::string_view str) const -> bool
+{
+    int state = start_state;
+    for (char ch : str) {
+        state = next_state(state, ch);
+        if (state == -1) {
+            return false;
+        }
+    }
+    return accept_states.contains(state);
 }
 
 } // namespace corpus_search::regex

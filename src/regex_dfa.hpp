@@ -22,12 +22,13 @@ struct graph
     int start_state;
     std::set<int> accept_states;
     int num_states = 0;
+
+    auto next_state(int state, char ch) const -> int;
+    auto match(std::string_view str) const -> bool;
 };
 } // namespace sm
 
 auto ast_to_dfa(ast::node const& node) -> sm::graph;
-
-auto dfa_match(sm::graph const& dfa, std::string str) -> bool;
 
 } // namespace corpus_search::regex
 

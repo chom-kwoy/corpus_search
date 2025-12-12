@@ -280,7 +280,7 @@ static auto convert(T const& node) -> ast::node
         }
         auto elem = convert(node.element);
 
-        ast::node end = {ast::node_empty{}};
+        auto end = ast::node{ast::node_empty{}};
         if (node.max == std::numeric_limits<int>::max()) {
             end = ast::node_star{elem};
         } else if (node.min < node.max) {
@@ -314,13 +314,15 @@ static auto convert(T const& node) -> ast::node
     } else if constexpr (std::is_same_v<T, cst::assertion>) {
         return std::visit([](auto&& arg) { return convert(arg); }, node.get());
     } else if constexpr (std::is_same_v<T, cst::edge_assertion>) {
-        // TODO
-        throw std::runtime_error("edge_assertion not implemented");
-        return {ast::node_empty{}};
+        if (node.kind == cst::assertion_kind::start) {
+            return {ast::node_empty{ast::assertion_kind::start}};
+        } else if (node.kind == cst::assertion_kind::end) {
+            return {ast::node_empty{ast::assertion_kind::end}};
+        } else {
+            throw std::runtime_error("unsupported edge assertion");
+        }
     } else if constexpr (std::is_same_v<T, cst::word_boundary_assertion>) {
-        // TODO
-        throw std::runtime_error("word_boundary_assertion not implemented");
-        return {ast::node_empty{}};
+        return {ast::node_empty{ast::assertion_kind::word}};
     } else if constexpr (std::is_same_v<T, cst::group>) {
         if (node.alternatives.size() == 1) {
             return convert(node.alternatives[0]);

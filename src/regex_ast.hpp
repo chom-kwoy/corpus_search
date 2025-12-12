@@ -17,8 +17,11 @@ struct node_star;
 
 using node = rvariant<node_empty, node_range, node_union, node_concat, node_star>;
 
+enum class assertion_kind { none, start, end, word };
 struct node_empty
-{};
+{
+    assertion_kind assertion;
+};
 struct node_range
 {
     int min;

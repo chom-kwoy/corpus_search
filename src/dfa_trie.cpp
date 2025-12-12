@@ -102,19 +102,8 @@ auto dfa_trie::consume_token(regex::sm::graph const& dfa,
                              std::string_view token) const -> int
 {
     for (char ch : token) {
-        int idx = ch & 0xff;
-        auto const& edges = dfa.edges.at(state);
-        auto ubound = std::upper_bound(edges.begin(),
-                                       edges.end(),
-                                       regex::sm::transition{{idx}},
-                                       [](auto const& a, auto const& b) {
-                                           return a.range.min < b.range.min;
-                                       });
-        if (ubound != edges.begin()) {
-            --ubound;
-        }
-        if (ubound->range.min <= idx && idx <= ubound->range.max) {
-            state = ubound->target_state;
+        state = dfa.next_state(state, ch);
+        if (state != -1) {
             if (dfa.accept_states.contains(state)) {
                 return ACCEPTED;
             }
