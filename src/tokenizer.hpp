@@ -29,7 +29,8 @@ class tokenizer
     auto unnormalize(std::string_view string) const -> std::string;
 
 public:
-    // TODO: un-hardcode this
+    // TODO: un-hardcode these
+    static constexpr int BOS_TOKEN_ID = 0;
     static constexpr int EOS_TOKEN_ID = 1;
 
     tokenizer(std::string tokenizer_json_path,
@@ -45,7 +46,8 @@ public:
     auto normalize_mapping() const -> auto const & { return m_normalize_mapping; }
     auto inv_normalize_mapping() const -> auto const & { return m_inv_normalize_mapping; }
 
-    auto tokenize(std::string_view string) const -> std::vector<int>;
+    auto tokenize(std::string_view string,
+                  bool add_special_tokens = false) const -> std::vector<int>;
 };
 
 auto to_bytes(std::string_view s) -> std::string;

@@ -116,9 +116,14 @@ auto tokenizer::max_token_bytes() const -> int
     return m_max_token_bytes;
 }
 
-auto tokenizer::tokenize(std::string_view string) const -> std::vector<int>
+auto tokenizer::tokenize(std::string_view string, bool add_special_tokens) const -> std::vector<int>
 {
-    return hf_tokenizer->Encode(to_unicode(normalize(string)));
+    auto result = hf_tokenizer->Encode(to_unicode(normalize(string)));
+    if (add_special_tokens) {
+        result.insert(result.begin(), BOS_TOKEN_ID);
+        result.push_back(EOS_TOKEN_ID);
+    }
+    return result;
 }
 
 auto to_bytes(std::string_view s) -> std::string

@@ -97,7 +97,7 @@ auto corpus_search::backend::tokenizer_tokenize(tokenizer tok,
                                                 int *out_tokens,
                                                 std::size_t maxlen) noexcept -> int
 {
-    auto tokens = reinterpret_cast<corpus_search::tokenizer *>(tok)->tokenize(string);
+    auto tokens = reinterpret_cast<corpus_search::tokenizer *>(tok)->tokenize(string, true);
     for (int i = 0; i < std::min(maxlen, tokens.size()); ++i) {
         out_tokens[i] = tokens[i];
     }
