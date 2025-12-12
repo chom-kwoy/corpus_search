@@ -16,19 +16,52 @@ static auto character_set(T const& node) -> roaring::Roaring
         return std::visit([](auto&& arg) { return character_set(arg); }, node.get());
     } else if constexpr (std::is_same_v<T, cst::character_class_range>) {
         auto set = roaring::Roaring{};
-        set.addRange(node.min, node.max + 1);
+        set.addRangeClosed(node.min, node.max);
         return set;
     } else if constexpr (std::is_same_v<T, cst::any_character_set>) {
         auto set = roaring::Roaring{};
-        set.addRange(0, UNICODE_MAX + 1);
+        set.addRangeClosed(0, UNICODE_MAX);
         return set;
     } else if constexpr (std::is_same_v<T, cst::escape_character_set>) {
-        // TODO
-        throw std::runtime_error("escape char set not implemented");
-        return {};
+        switch (node.kind) {
+        case cst::character_set_kind::digit: {
+            auto set = roaring::Roaring{};
+            set.addRangeClosed('0', '9');
+            if (node.negate) {
+                set.flipClosed(0, UNICODE_MAX);
+            }
+            return set;
+        }
+        case cst::character_set_kind::word: {
+            auto set = roaring::Roaring{};
+            set.addRangeClosed('a', 'z');
+            set.addRangeClosed('A', 'Z');
+            set.addRangeClosed('0', '9');
+            set.add('_');
+            if (node.negate) {
+                set.flipClosed(0, UNICODE_MAX);
+            }
+            return set;
+        }
+        case cst::character_set_kind::space: {
+            auto set = roaring::Roaring{};
+            set.add(' ');
+            set.add('\t');
+            set.add('\r');
+            set.add('\n');
+            set.add('\v');
+            set.add('\f');
+            if (node.negate) {
+                set.flipClosed(0, UNICODE_MAX);
+            }
+            return set;
+        }
+        default:
+            throw std::runtime_error("unsupported set kind");
+        }
     } else if constexpr (std::is_same_v<T, cst::unicode_property_character_set>) {
+        throw std::runtime_error("unicode property set not implemented");
         // TODO
-        throw std::runtime_error("unicode set not implemented");
         return {};
     } else if constexpr (std::is_same_v<T, char32_t>) {
         auto set = roaring::Roaring{};
@@ -281,7 +314,7 @@ static auto convert(T const& node) -> ast::node
     } else if constexpr (std::is_same_v<T, cst::assertion>) {
         return std::visit([](auto&& arg) { return convert(arg); }, node.get());
     } else if constexpr (std::is_same_v<T, cst::edge_assertion>) {
-        // TOOD
+        // TODO
         throw std::runtime_error("edge_assertion not implemented");
         return {ast::node_empty{}};
     } else if constexpr (std::is_same_v<T, cst::word_boundary_assertion>) {
@@ -398,7 +431,7 @@ auto print_ast(ast::node const& n) -> std::string
                     if (std::isprint(ch)) {
                         return fmt::format("'{}'", ch);
                     }
-                    return fmt::format("\\{:x}", ch);
+                    return fmt::format("\\x{:02x}", ch);
                 };
                 if (node.min == node.max) {
                     return fmt::format("{}", printch(node.min));

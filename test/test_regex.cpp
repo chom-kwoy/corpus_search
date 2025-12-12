@@ -20,7 +20,7 @@ static void print_dfa(corpus_search::regex::sm::graph const& dfa)
         if (std::isprint(ch)) {
             return fmt::format("'{}'", ch);
         }
-        return fmt::format("\\{:x}", ch);
+        return fmt::format("\\x{:02x}", ch);
     };
 
     for (auto&& [state, edges] : dfa.edges) {
@@ -175,6 +175,16 @@ TEST(Regex, DFAStar)
 TEST(Regex, RegexMatchAll)
 {
     test_parse(".*");
+}
+
+TEST(Regex, RegexEscapeCharSet)
+{
+    test_parse("\\w");
+    test_parse("\\W");
+    test_parse("\\d");
+    test_parse("\\D");
+    test_parse("\\s");
+    test_parse("\\S");
 }
 
 TEST(Regex, Regex)
