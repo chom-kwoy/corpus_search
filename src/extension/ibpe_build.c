@@ -503,8 +503,14 @@ IndexBuildResult *ibpe_build(Relation heapRelation, Relation indexRelation, Inde
 /* build empty index */
 void ibpe_buildempty(Relation indexRelation)
 {
-    // TODO
-    elog(ERROR, "ibpe_buildempty: Not implemented");
+    elog(NOTICE, "ibpe_buildempty called");
+
+    if (RelationGetNumberOfBlocks(indexRelation) != 0)
+        elog(ERROR, "index \"%s\" already contains data", RelationGetRelationName(indexRelation));
+
+    ibpe_init_metapage(indexRelation, INIT_FORKNUM);
+
+    ibpe_restore_or_create_cache(indexRelation);
 }
 
 /* insert this tuple */
