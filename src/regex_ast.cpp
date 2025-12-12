@@ -337,9 +337,52 @@ static auto convert(T const& node) -> ast::node
     }
 }
 
+static auto normalize(ast::node const& node) -> ast::node
+{
+    // collapse single-child nodes
+    auto result = std::visit(
+        [](auto&& r) -> ast::node {
+            using R = std::decay_t<decltype(r)>;
+            if constexpr (std::is_same_v<R, ast::node_concat>
+                          || std::is_same_v<R, ast::node_union>) {
+                if (r.args.size() == 0) {
+                    return {ast::node_empty{}};
+                } else if (r.args.size() == 1) {
+                    return normalize(r.args[0]);
+                } else if constexpr (std::is_same_v<R, ast::node_concat>) {
+                    // convert to binary tree
+                    auto modified = ast::node_concat{{
+                        normalize(r.args[0]),
+                        normalize(r.args[1]),
+                    }};
+                    for (int i = 2; i < r.args.size(); ++i) {
+                        modified = ast::node_concat{{
+                            {std::move(modified)},
+                            normalize(r.args[i]),
+                        }};
+                    }
+                    return {std::move(modified)};
+                } else {
+                    auto modified = ast::node_union{};
+                    for (int i = 0; i < r.args.size(); ++i) {
+                        modified.args.push_back(normalize(r.args[i]));
+                    }
+                    return {std::move(modified)};
+                }
+            } else if constexpr (std::is_same_v<R, ast::node_star>) {
+                return {ast::node_star{normalize(r.arg)}};
+            }
+            return {r};
+        },
+        node.get());
+
+    return result;
+}
+
 auto cst_to_ast(cst::pattern const& cst) -> ast::node
 {
-    return convert(cst);
+    auto result = convert(cst);
+    return normalize(result);
 }
 
 auto print_ast(ast::node const& n) -> std::string

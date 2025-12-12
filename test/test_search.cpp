@@ -82,6 +82,7 @@ TEST_F(Searcher, SearchRegexEasy)
     get_tok(), get_index();
 
     EXPECT_EQ(measure_time("cho\\.c[ou]\\.ni").size(), 168);
+    EXPECT_EQ(measure_time("cho\\.cw?[ou]\\.n").size(), 231);
     EXPECT_EQ(measure_time("w[ou]\\.toy").size(), 44'782);
 }
 

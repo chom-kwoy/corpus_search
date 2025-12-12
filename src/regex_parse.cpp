@@ -293,6 +293,8 @@ auto quantifier::apply(pegtl::parse_tree::node* node, std::vector<std::any> args
         } else if (node->children.at(1)->string_view() == "?") {
             result.min = 0;
             result.max = 1;
+        } else {
+            assert(false);
         }
     } else if (args.size() == 2) {
         result.min = std::any_cast<int>(args[1]);

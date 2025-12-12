@@ -149,6 +149,11 @@ static auto load_llg_tokenizer(corpus_search::tokenizer const& tok,
     return ll_tokenizer;
 }
 
+TEST(Regex, RegexOptional)
+{
+    test_parse("cho\\.cw?o\\.ni");
+}
+
 TEST(Regex, Regex)
 {
     test_parse(HANJA_RE "`i");

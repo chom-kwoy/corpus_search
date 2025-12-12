@@ -55,30 +55,28 @@ auto mark(ast::node const& node, mark_state& state) -> node_table
                 }
                 return result;
             } else if constexpr (std::is_same_v<T, ast::node_concat>) {
+                assert(node.args.size() == 2);
+
                 auto result = node_table{};
-                result.nullable = true;
                 result.type = node_type::concat;
 
-                std::vector<node_table> args_pos;
-                for (auto&& arg : node.args) {
-                    int ch_idx = state.cur_index;
-                    auto p = mark(arg, state);
-                    result.nullable = result.nullable && p.nullable;
-                    args_pos.push_back(std::move(p));
-                    result.children.push_back(ch_idx);
+                int ch0_idx = state.cur_index;
+                auto p0 = mark(node.args[0], state);
+                result.children.push_back(ch0_idx);
+
+                int ch1_idx = state.cur_index;
+                auto p1 = mark(node.args[1], state);
+                result.children.push_back(ch1_idx);
+
+                result.nullable = p0.nullable && p1.nullable;
+                result.firstpos.insert(p0.firstpos.begin(), p0.firstpos.end());
+                if (p0.nullable) {
+                    result.firstpos.insert(p1.firstpos.begin(), p1.firstpos.end());
                 }
 
-                for (auto&& p : args_pos) {
-                    result.firstpos.insert(p.firstpos.begin(), p.firstpos.end());
-                    if (!p.nullable) {
-                        break;
-                    }
-                }
-                for (auto&& p : args_pos | std::views::reverse) {
-                    result.lastpos.insert(p.lastpos.begin(), p.lastpos.end());
-                    if (!p.nullable) {
-                        break;
-                    }
+                result.lastpos.insert(p1.lastpos.begin(), p1.lastpos.end());
+                if (p1.nullable) {
+                    result.lastpos.insert(p0.lastpos.begin(), p0.lastpos.end());
                 }
 
                 return result;

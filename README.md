@@ -10,10 +10,10 @@ See [BUILD.md](BUILD.md) for build instructions.
 ```sql
 create extension corpussearch;
 create index my_ibpe_index on sentences using ibpe (text) with (
-    tokenizer_path = '/var/lib/postgresql/tokenizer.json',
+    tokenizer_path = '/var/lib/postgresql/tokenizer1.json',
     normalize_mappings = '{".": "x", "/": "Z", "\\": "X", "`": "C"}'
 );
-SELECT pg_size_pretty(pg_relation_size('my_ibpe_index'));
+SELECT pg_size_pretty(pg_relation_size('my_ibpe_index')); 
 
 -- with ibpe index
 SET enable_seqscan = off; explain analyze select text from sentences where text ~ 'ho';
