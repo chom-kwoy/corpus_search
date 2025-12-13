@@ -1,6 +1,6 @@
 #include "dfa_trie.hpp"
+#include "tokenizer.hpp"
 
-#include <algorithm>
 #include <queue>
 
 namespace corpus_search {

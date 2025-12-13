@@ -2,7 +2,6 @@
 
 #include "dfa_trie.hpp"
 
-#include <chrono>
 #include <fmt/chrono.h>
 #include <fmt/core.h>
 #include <fmt/ranges.h>
@@ -29,38 +28,6 @@ auto get_sent_ids(std::vector<index_entry> const &self) -> std::vector<sentid_t>
         last_sent_id = entry.sent_id;
     }
     return output;
-}
-
-static auto to_bitset(std::uint32_t const *mask, int len) -> boost::dynamic_bitset<>
-{
-    auto result = boost::dynamic_bitset<>(len);
-    for (int i = 0; i < (len + 31) / 32; ++i) {
-        if (mask[i] == 0) {
-            continue;
-        }
-        for (int b = 0; b < 32; ++b) {
-            if ((mask[i] >> b) & 0b1) {
-                result.set(i * 32 + b);
-            }
-        }
-    }
-    return result;
-}
-
-static auto nonzero_pos(boost::dynamic_bitset<> const &mask) -> std::vector<int>
-{
-    std::vector<int> result;
-    int cnt = mask.count();
-    if (cnt == 0) {
-        return result;
-    }
-    result.reserve(cnt);
-    int i = mask.find_first();
-    do {
-        result.push_back(i);
-        i = mask.find_next(i);
-    } while (i != mask.npos);
-    return result;
 }
 
 auto followed_by(std::vector<index_entry> &&self, candset const &other) -> std::vector<index_entry>
@@ -149,21 +116,25 @@ auto merge_sorted_lists(std::vector<pointer_or_object> const &cand_lists) -> std
     return result;
 }
 
+struct cache_entry
+{
+    std::vector<index_entry> cands;
+};
+
 auto generate_cands(int state,
-                    std::set<int> &visiting_states,
+                    std::set<int> &visited_states,
                     std::string const &prev_prefix, // for debugging only
                     tokenizer const &tok,
                     regex::sm::graph const &dfa,
-                    dfa_trie const &trie,
                     std::function<index_accessor> const &index,
-                    std::unordered_map<int, std::vector<index_entry>> &cache,
+                    std::unordered_map<int, cache_entry> &cache,
                     int level = 1) -> std::vector<index_entry>
 {
     if (cache.contains(state)) {
-        return cache.at(state);
+        return cache.at(state).cands;
     }
 
-    auto next_tokens = trie.get_next_tids(dfa, state);
+    auto next_tokens = tok.trie().get_next_tids(dfa, state);
 
     fmt::println("lvl {} (state={}): '{}' (+ {} tokens)",
                  level,
@@ -184,28 +155,27 @@ auto generate_cands(int state,
             continue;
         }
 
-        int new_state = trie.consume_token(dfa, state, token_str);
+        int new_state = tok.trie().consume_token(dfa, state, token_str);
         assert(new_state != dfa_trie::REJECTED);
         if (new_state == dfa_trie::ACCEPTED) {
             cand_lists.push_back(matches);
             continue;
         }
 
-        if (visiting_states.contains(new_state)) {
+        if (visited_states.contains(new_state)) {
             throw std::runtime_error("infinite recursion detected");
         }
 
-        visiting_states.insert(new_state);
+        visited_states.insert(new_state);
         auto cands = generate_cands(new_state,
-                                    visiting_states,
+                                    visited_states,
                                     cur_prefix,
                                     tok,
                                     dfa,
-                                    trie,
                                     index,
                                     cache,
                                     level + 1);
-        visiting_states.erase(new_state);
+        visited_states.erase(new_state);
         cand_lists.push_back(followed_by(std::move(matches), cands));
     }
 
@@ -213,7 +183,7 @@ auto generate_cands(int state,
     auto result = merge_sorted_lists(cand_lists);
 
     if (level > 0) {
-        cache[state] = result;
+        cache[state] = {result};
     }
 
     return result;
@@ -245,18 +215,12 @@ auto search(tokenizer const &tok,
         return get_sent_ids(index(tok.EOS_TOKEN_ID));
     }
 
-    auto begin_time = std::chrono::high_resolution_clock::now();
-    auto trie = dfa_trie(tok);
-    auto elapsed = std::chrono::high_resolution_clock::now() - begin_time;
-    fmt::println("Constructed DFA trie in {}.",
-                 std::chrono::duration_cast<std::chrono::duration<float>>(elapsed));
-
     auto cand_lists = std::vector<pointer_or_object>{};
 
-    std::unordered_map<int, std::vector<index_entry>> cache;
-    std::set<int> visiting_states = {dfa.start_state};
+    std::unordered_map<int, cache_entry> cache;
+    std::set<int> visited_states = {dfa.start_state};
     for (int p = 0; p < tok.max_token_bytes(); ++p) {
-        auto next_tokens = trie.get_next_tids(dfa, dfa.start_state, p);
+        auto next_tokens = tok.trie().get_next_tids(dfa, dfa.start_state, p);
 
         fmt::println("p={}\nlvl {}: '{}' (+ {} tokens)", p, 0, "", next_tokens.cardinality());
 
@@ -267,26 +231,20 @@ auto search(tokenizer const &tok,
             }
 
             auto token_str = tok.get_tid_to_token().at(tid).substr(p);
-            int new_state = trie.consume_token(dfa, dfa.start_state, token_str);
+            int new_state = tok.trie().consume_token(dfa, dfa.start_state, token_str);
             assert(new_state != dfa_trie::REJECTED);
 
-            if (visiting_states.contains(new_state)) {
+            if (visited_states.contains(new_state)) {
                 throw std::runtime_error("infinite recursion detected");
             }
 
             if (new_state == dfa_trie::ACCEPTED) {
                 cand_lists.push_back(matches);
             } else {
-                visiting_states.insert(new_state);
-                auto cands = generate_cands(new_state,
-                                            visiting_states,
-                                            token_str,
-                                            tok,
-                                            dfa,
-                                            trie,
-                                            index,
-                                            cache);
-                visiting_states.erase(new_state);
+                visited_states.insert(new_state);
+                auto cands
+                    = generate_cands(new_state, visited_states, token_str, tok, dfa, index, cache);
+                visited_states.erase(new_state);
                 cand_lists.push_back(followed_by(std::move(matches), cands));
             }
         }

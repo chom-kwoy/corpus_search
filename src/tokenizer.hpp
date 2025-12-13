@@ -15,6 +15,8 @@ class Tokenizer;
 
 namespace corpus_search {
 
+class dfa_trie;
+
 class tokenizer
 {
     std::unique_ptr<tokenizers::Tokenizer> hf_tokenizer;
@@ -24,6 +26,8 @@ class tokenizer
 
     std::unordered_map<char, char> m_normalize_mapping;
     std::unordered_map<char, char> m_inv_normalize_mapping;
+
+    std::unique_ptr<dfa_trie> m_trie;
 
     auto normalize(std::string_view string) const -> std::string;
     auto unnormalize(std::string_view string) const -> std::string;
@@ -45,6 +49,7 @@ public:
     auto get_tid_to_token() const -> auto const & { return tid_to_token; }
     auto normalize_mapping() const -> auto const & { return m_normalize_mapping; }
     auto inv_normalize_mapping() const -> auto const & { return m_inv_normalize_mapping; }
+    auto trie() const -> auto const & { return *m_trie; }
 
     auto tokenize(std::string_view string,
                   bool add_special_tokens = false) const -> std::vector<int>;

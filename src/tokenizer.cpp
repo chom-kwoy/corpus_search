@@ -1,4 +1,5 @@
 #include "tokenizer.hpp"
+#include "dfa_trie.hpp"
 
 #include <filesystem>
 #include <fstream>
@@ -102,6 +103,8 @@ tokenizer::tokenizer(std::string tokenizer_json_path,
     if (verbose) {
         fmt::println("Max token length in bytes = {}", m_max_token_bytes);
     }
+
+    m_trie = std::make_unique<dfa_trie>(*this);
 }
 
 tokenizer::~tokenizer() = default;

@@ -2,14 +2,14 @@
 #define DFA_TRIE_HPP
 
 #include "regex_dfa.hpp"
-#include "tokenizer.hpp"
 
 #include <roaring.hh>
 
 namespace corpus_search {
 
-struct trie;
+class tokenizer;
 
+struct trie;
 class dfa_trie
 {
     std::vector<trie> tries;

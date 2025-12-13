@@ -51,9 +51,13 @@ protected:
     static void TearDownTestSuite() {}
 };
 
-TEST_F(Searcher, SearchStringSimple)
+TEST_F(Searcher, SearchStringSimple1)
 {
     EXPECT_EQ(measure_time("ho").size(), 811'085);
+}
+
+TEST_F(Searcher, SearchStringSimple2)
+{
     EXPECT_EQ(measure_time("z").size(), 20'621);
     EXPECT_EQ(measure_time("o").size(), 1'286'817);
     EXPECT_EQ(measure_time("TT").size(), 0);
