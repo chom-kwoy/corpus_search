@@ -69,12 +69,6 @@ tokenizer::tokenizer(std::string tokenizer_json_path,
     auto json_for_tok = json;
     json_for_tok["pre_tokenizer"] = nullptr; // remove unicode conversion to allow partial characters
     hf_tokenizer = tokenizers::Tokenizer::FromBlobJSON(json_for_tok.dump());
-    if (verbose) {
-        const char sample_input[] = ". / \\ ` kaxnanxho ngixta 國家";
-        fmt::println("Loaded hf  tokenizer. \"{}\" -> [{}]",
-                     sample_input,
-                     fmt::join(tokenize(sample_input), ", "));
-    }
 
     // Do other preprocessing stuff
     auto special_tokens = std::unordered_set<int>{};
@@ -94,6 +88,16 @@ tokenizer::tokenizer(std::string tokenizer_json_path,
             continue;
         }
         tid_to_token[tok_id.get<int>()] = unnormalize(to_bytes(tok_str));
+    }
+
+    if (verbose) {
+        const char sample_input[] = "Gi.non Gwu.li he.mu.li.la 世尊s ta.si Ga.ni.si.ta.so.ngi.ta";
+        auto ids = tokenize(sample_input);
+        std::vector<std::string> tokens;
+        for (auto id : ids) {
+            tokens.push_back(fmt::format("[{}: {}]", id, to_unicode(tid_to_token.at(id))));
+        }
+        fmt::println("Loaded hf tokenizer. \"{}\" -> [{}]", sample_input, fmt::join(tokens, ", "));
     }
 
     m_max_token_bytes = 0;

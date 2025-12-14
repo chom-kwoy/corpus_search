@@ -1,7 +1,7 @@
 #ifndef SEARCHER_HPP
 #define SEARCHER_HPP
 
-#include "index_builder.hpp"
+#include "sizes.h"
 #include "tokenizer.hpp"
 
 #include <functional>
@@ -10,7 +10,22 @@
 
 namespace corpus_search {
 
-using index_accessor = auto(int token) -> std::vector<index_entry>;
+struct token_range
+{
+    sentid_t sent_id;
+    tokpos_t i, j;
+
+    bool operator<(token_range const &other) const
+    {
+        return std::tie(sent_id, i, j) < std::tie(other.sent_id, other.i, other.j);
+    }
+    bool operator!=(token_range const &other) const
+    {
+        return std::tie(sent_id, i, j) != std::tie(other.sent_id, other.i, other.j);
+    }
+};
+
+using index_accessor = auto(int token) -> std::vector<token_range>;
 
 auto search(tokenizer const &tok,
             std::function<index_accessor> const &index,

@@ -13,11 +13,9 @@
 
 namespace corpus_search {
 
-using candset = std::optional<std::vector<index_entry>>;
-
 namespace { // static linkage
 
-auto get_sent_ids(std::vector<index_entry> const &self) -> std::vector<sentid_t>
+auto get_sent_ids(std::span<const token_range> self) -> std::vector<sentid_t>
 {
     std::vector<sentid_t> output;
     sentid_t last_sent_id = -1;
@@ -30,16 +28,10 @@ auto get_sent_ids(std::vector<index_entry> const &self) -> std::vector<sentid_t>
     return output;
 }
 
-auto followed_by(std::vector<index_entry> &&self, candset const &other) -> std::vector<index_entry>
+auto followed_by(std::span<const token_range> arr1,
+                 std::span<const token_range> arr2) -> std::vector<token_range>
 {
-    if (!other.has_value()) {
-        return self;
-    }
-
-    auto const &arr1 = self;
-    auto const &arr2 = other.value();
-
-    std::vector<index_entry> result;
+    std::vector<token_range> result;
 
     auto it1 = arr1.begin();
     auto it2 = arr2.begin();
@@ -50,10 +42,10 @@ auto followed_by(std::vector<index_entry> &&self, candset const &other) -> std::
             ++it1;
         } else {
             if (entry1.sent_id == entry2.sent_id) {
-                if (entry1.pos + 1 < entry2.pos) {
+                if (entry1.j < entry2.i) {
                     ++it1;
-                } else if (entry1.pos + 1 == entry2.pos) {
-                    result.push_back(*it1);
+                } else if (entry1.j == entry2.i) {
+                    result.push_back({entry1.sent_id, entry1.i, entry2.j});
                     ++it1;
                     ++it2;
                 } else {
@@ -68,15 +60,12 @@ auto followed_by(std::vector<index_entry> &&self, candset const &other) -> std::
     return result;
 }
 
-using vec_pointer = std::span<const index_entry>;
-using vec_object = std::vector<index_entry>;
-using pointer_or_object = std::variant<vec_pointer, vec_object>;
-
-auto merge_sorted_lists(std::vector<pointer_or_object> const &cand_lists) -> std::vector<index_entry>
+auto merge_sorted_lists(std::vector<std::vector<token_range>> const &cand_lists)
+    -> std::vector<token_range>
 {
-    auto result = std::vector<index_entry>{};
+    auto result = std::vector<token_range>{};
 
-    using queue_item = std::tuple<index_entry, int, int>;
+    using queue_item = std::tuple<token_range, int, int>;
     struct comparator
     {
         auto operator()(queue_item const &l, queue_item const &r) -> bool
@@ -86,22 +75,17 @@ auto merge_sorted_lists(std::vector<pointer_or_object> const &cand_lists) -> std
     };
     auto pending = std::priority_queue<queue_item, std::vector<queue_item>, comparator>{};
 
-    auto get_size = [](auto &&x) { return std::visit([](auto &&arg) { return arg.size(); }, x); };
-    auto get_item = [](auto &&x, std::size_t index) {
-        return std::visit([index](auto &&arg) { return arg[index]; }, x);
-    };
-
     for (int i = 0; i < cand_lists.size(); ++i) {
-        if (get_size(cand_lists[i]) >= 1) {
-            pending.push({get_item(cand_lists[i], 0), i, 0});
+        if (cand_lists[i].size() >= 1) {
+            pending.push({cand_lists[i][0], i, 0});
         }
     }
     while (!pending.empty()) {
         auto [item, vec_index, item_index] = pending.top();
         pending.pop();
-        if (item_index + 1 < get_size(cand_lists[vec_index])) {
+        if (item_index + 1 < cand_lists[vec_index].size()) {
             pending.push({
-                get_item(cand_lists[vec_index], item_index + 1),
+                cand_lists[vec_index][item_index + 1],
                 vec_index,
                 item_index + 1,
             });
@@ -116,22 +100,17 @@ auto merge_sorted_lists(std::vector<pointer_or_object> const &cand_lists) -> std
     return result;
 }
 
-struct cache_entry
-{
-    std::vector<index_entry> cands;
-};
-
 auto generate_cands(int state,
                     std::set<int> &visited_states,
                     std::string const &prev_prefix, // for debugging only
                     tokenizer const &tok,
                     regex::sm::graph const &dfa,
                     std::function<index_accessor> const &index,
-                    std::unordered_map<int, cache_entry> &cache,
-                    int level = 1) -> std::vector<index_entry>
+                    std::unordered_map<int, std::vector<token_range>> &cache,
+                    int level = 1) -> std::vector<token_range>
 {
     if (cache.contains(state)) {
-        return cache.at(state).cands;
+        return cache.at(state);
     }
 
     auto next_tokens = tok.trie().get_next_tids(dfa, state);
@@ -142,7 +121,7 @@ auto generate_cands(int state,
                  prev_prefix,
                  next_tokens.cardinality());
 
-    auto cand_lists = std::vector<pointer_or_object>{};
+    auto full_cands = std::vector<std::vector<token_range>>{};
 
     for (int token : next_tokens) {
         assert(token != tok.EOS_TOKEN_ID);
@@ -158,11 +137,12 @@ auto generate_cands(int state,
         int new_state = tok.trie().consume_token(dfa, state, token_str);
         assert(new_state != dfa_trie::REJECTED);
         if (new_state == dfa_trie::ACCEPTED) {
-            cand_lists.push_back(matches);
+            full_cands.push_back(std::move(matches));
             continue;
         }
 
         if (visited_states.contains(new_state)) {
+            // infinite recursion detected
             throw std::runtime_error("infinite recursion detected");
         }
 
@@ -176,17 +156,14 @@ auto generate_cands(int state,
                                     cache,
                                     level + 1);
         visited_states.erase(new_state);
-        cand_lists.push_back(followed_by(std::move(matches), cands));
+        full_cands.push_back(followed_by(matches, cands));
     }
 
     // union the sorted sequences in vec_result
-    auto result = merge_sorted_lists(cand_lists);
+    auto full_result = merge_sorted_lists(full_cands);
+    cache[state] = full_result;
 
-    if (level > 0) {
-        cache[state] = {result};
-    }
-
-    return result;
+    return full_result;
 }
 
 } // namespace
@@ -212,41 +189,53 @@ auto search(tokenizer const &tok,
     if (dfa.accept_states.contains(dfa.start_state)) {
         // every string matches
         fmt::println("DFA accepts empty string; returning all sentence IDs.");
-        return get_sent_ids(index(tok.EOS_TOKEN_ID));
+        std::vector<sentid_t> output;
+        sentid_t last_sent_id = -1;
+        for (auto entry : index(tok.BOS_TOKEN_ID)) {
+            if (entry.sent_id != last_sent_id) {
+                output.push_back(entry.sent_id);
+            }
+            last_sent_id = entry.sent_id;
+        }
+        return output;
     }
 
-    auto cand_lists = std::vector<pointer_or_object>{};
+    auto cand_lists = std::vector<std::vector<token_range>>{};
 
-    std::unordered_map<int, cache_entry> cache;
+    std::unordered_map<int, std::vector<token_range>> cache;
     std::set<int> visited_states = {dfa.start_state};
-    for (int p = 0; p < tok.max_token_bytes(); ++p) {
-        auto next_tokens = tok.trie().get_next_tids(dfa, dfa.start_state, p);
 
-        fmt::println("p={}\nlvl {}: '{}' (+ {} tokens)", p, 0, "", next_tokens.cardinality());
+    struct token_and_offset
+    {
+        int token;
+        int pad_size;
+    };
+    auto next_tokens = std::vector<token_and_offset>{};
+    for (int pad = 0; pad < tok.max_token_bytes(); ++pad) {
+        for (int token : tok.trie().get_next_tids(dfa, dfa.start_state, pad)) {
+            next_tokens.push_back({token, pad});
+        }
+    }
 
-        for (auto tid : next_tokens) {
-            auto matches = index(tid);
-            if (matches.size() == 0) {
-                continue;
-            }
+    fmt::println("lvl {}: '{}' (+ {} tokens)", 0, "", next_tokens.size());
 
-            auto token_str = tok.get_tid_to_token().at(tid).substr(p);
-            int new_state = tok.trie().consume_token(dfa, dfa.start_state, token_str);
-            assert(new_state != dfa_trie::REJECTED);
+    for (auto [tid, pad] : next_tokens) {
+        auto matches = index(tid);
+        if (matches.size() == 0) {
+            continue;
+        }
 
-            if (visited_states.contains(new_state)) {
-                throw std::runtime_error("infinite recursion detected");
-            }
+        auto token_str = tok.get_tid_to_token().at(tid).substr(pad);
+        int new_state = tok.trie().consume_token(dfa, dfa.start_state, token_str);
+        assert(new_state != dfa_trie::REJECTED);
 
-            if (new_state == dfa_trie::ACCEPTED) {
-                cand_lists.push_back(matches);
-            } else {
-                visited_states.insert(new_state);
-                auto cands
-                    = generate_cands(new_state, visited_states, token_str, tok, dfa, index, cache);
-                visited_states.erase(new_state);
-                cand_lists.push_back(followed_by(std::move(matches), cands));
-            }
+        if (new_state == dfa_trie::ACCEPTED) {
+            cand_lists.push_back(std::move(matches));
+        } else {
+            visited_states.insert(new_state);
+            auto cands = generate_cands(new_state, visited_states, token_str, tok, dfa, index, cache);
+            visited_states.erase(new_state);
+            cand_lists.push_back(followed_by(matches, cands));
         }
     }
 

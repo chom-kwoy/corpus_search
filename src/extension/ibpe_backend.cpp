@@ -1,5 +1,6 @@
 #include "ibpe_backend.h"
 
+#include "index_builder.hpp"
 #include "searcher.hpp"
 
 #include <algorithm>
@@ -115,15 +116,24 @@ auto corpus_search::backend::search_corpus(tokenizer tok,
 {
     try {
         auto tok_ptr = reinterpret_cast<corpus_search::tokenizer *>(tok);
-        auto cb = [callback](int token) -> std::vector<corpus_search::index_entry> {
+        auto cb = [callback](int token) -> std::vector<corpus_search::token_range> {
             int num_entries = callback.func(callback.user_data, token, nullptr, 0);
             if (num_entries > 0) {
-                auto result = std::vector<corpus_search::index_entry>(num_entries);
+                auto vec = std::vector<corpus_search::index_entry>(num_entries);
                 callback.func(callback.user_data,
                               token,
-                              reinterpret_cast<index_entry *>(result.data()),
+                              reinterpret_cast<index_entry *>(vec.data()),
                               num_entries);
 
+                auto result = std::vector<corpus_search::token_range>(num_entries);
+                result.reserve(vec.size());
+                for (auto const &entry : vec) {
+                    result.push_back(corpus_search::token_range{
+                        entry.sent_id,
+                        entry.pos,
+                        static_cast<tokpos_t>(entry.pos + 1),
+                    });
+                }
                 return result;
             }
             return {};

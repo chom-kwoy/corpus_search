@@ -13,16 +13,24 @@ static auto measure_time(std::string search_term) -> std::vector<sentid_t>
     using namespace std::chrono;
     auto start_time = high_resolution_clock::now();
 
-    auto result = search(
-        get_tok(),
-        [](int token) -> std::vector<corpus_search::index_entry> {
-            auto& index = get_index().get_index();
-            if (index.count(token) == 0) {
-                return {};
-            }
-            return index.at(token);
-        },
-        search_term);
+    auto index_accessor = [](int token) {
+        std::vector<corpus_search::token_range> result{};
+        auto& index = get_index().get_index();
+        if (index.count(token) == 0) {
+            return result;
+        }
+        auto const& vec = index.at(token);
+        result.reserve(vec.size());
+        for (auto const& entry : vec) {
+            result.push_back({
+                entry.sent_id,
+                entry.pos,
+                static_cast<tokpos_t>(entry.pos + 1),
+            });
+        }
+        return result;
+    };
+    auto result = search(get_tok(), index_accessor, search_term);
 
     auto end_time = high_resolution_clock::now();
 
@@ -73,12 +81,14 @@ TEST_F(Searcher, SearchRegexInfinite)
     EXPECT_EQ(measure_time(".*abc").size(), 1'734'021);
 }
 
-TEST_F(Searcher, SearchStringHard)
+TEST_F(Searcher, SearchStringHard1)
 {
-    get_tok(), get_index();
-
-    EXPECT_EQ(measure_time("ho\\.ni").size(), 94'307);
     EXPECT_EQ(measure_time("si\\.ta\\.so\\.ngi\\.ta").size(), 14);
+}
+
+TEST_F(Searcher, SearchStringHard2)
+{
+    EXPECT_EQ(measure_time("ho\\.ni").size(), 94'307);
     EXPECT_EQ(measure_time("ngi\\.ta").size(), 2'472);
     EXPECT_EQ(measure_time("ka\\.nan\\.ho").size(), 719);
     EXPECT_EQ(measure_time("o\\.non").size(), 74'953);
@@ -88,8 +98,6 @@ TEST_F(Searcher, SearchStringHard)
 
 TEST_F(Searcher, SearchRegexEasy)
 {
-    get_tok(), get_index();
-
     EXPECT_EQ(measure_time("cho\\.c[ou]\\.ni").size(), 168);
     EXPECT_EQ(measure_time("cho\\.cw?[ou]\\.n").size(), 231);
     EXPECT_EQ(measure_time("w[ou]\\.toy").size(), 44'782);
@@ -97,21 +105,15 @@ TEST_F(Searcher, SearchRegexEasy)
 
 TEST_F(Searcher, SearchRegexHard1)
 {
-    get_tok(), get_index();
-
     EXPECT_EQ(measure_time("(k[aeiou]\\.){3}k").size(), 0);
 }
 
 TEST_F(Searcher, SearchRegexHard2)
 {
-    get_tok(), get_index();
-
     EXPECT_EQ(measure_time(HANJA_RE "`i").size(), 61'261);
 }
 
 TEST_F(Searcher, SearchRegexHard3)
 {
-    get_tok(), get_index();
-
     EXPECT_EQ(measure_time("....pskuy").size(), 776);
 }
