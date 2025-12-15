@@ -102,14 +102,20 @@ auto merge_sorted_lists(std::vector<std::vector<token_range>> const &cand_lists)
 
 constexpr int CANDS_THRESHOLD = 10'000'000;
 
+struct cand_result
+{
+    std::optional<std::vector<token_range>> cands;
+    bool needs_recheck;
+};
+
 auto generate_cands(int state,
                     std::set<int> &visited_states,
                     std::string const &prev_prefix, // for debugging only
                     tokenizer const &tok,
                     regex::sm::graph const &dfa,
                     std::function<index_accessor> const &index,
-                    std::unordered_map<int, std::optional<std::vector<token_range>>> &cache,
-                    int level = 1) -> std::optional<std::vector<token_range>>
+                    std::unordered_map<int, cand_result> &cache,
+                    int level = 1) -> cand_result
 {
     if (cache.contains(state)) {
         return cache.at(state);
@@ -125,6 +131,7 @@ auto generate_cands(int state,
     std::fflush(stdout);
 
     auto full_cands = std::vector<std::vector<token_range>>{};
+    bool needs_recheck = false;
 
     int num_elems = 0;
     for (int token : next_tokens) {
@@ -147,23 +154,24 @@ auto generate_cands(int state,
             fmt::println("Warning: infinite recursion detected; aborting..");
             std::fflush(stdout);
 
-            return cache[state] = std::nullopt;
+            return cache[state] = {std::nullopt, true};
         } else {
             visited_states.insert(new_state);
-            auto cands = generate_cands(new_state,
-                                        visited_states,
-                                        cur_prefix,
-                                        tok,
-                                        dfa,
-                                        index,
-                                        cache,
-                                        level + 1);
+            auto r = generate_cands(new_state,
+                                    visited_states,
+                                    cur_prefix,
+                                    tok,
+                                    dfa,
+                                    index,
+                                    cache,
+                                    level + 1);
             visited_states.erase(new_state);
-            if (cands.has_value()) {
-                full_cands.push_back(followed_by(matches, cands.value()));
+            if (r.cands.has_value()) {
+                full_cands.push_back(followed_by(matches, r.cands.value()));
             } else {
                 full_cands.push_back(matches);
             }
+            needs_recheck = needs_recheck || r.needs_recheck;
         }
 
         num_elems += full_cands.back().size();
@@ -173,21 +181,21 @@ auto generate_cands(int state,
                          CANDS_THRESHOLD);
             std::fflush(stdout);
 
-            return cache[state] = std::nullopt;
+            return cache[state] = {std::nullopt, true};
         }
     }
 
     // union the sorted sequences in vec_result
     auto full_result = merge_sorted_lists(full_cands);
 
-    return cache[state] = full_result;
+    return cache[state] = {full_result, needs_recheck};
 }
 
 } // namespace
 
 auto search(tokenizer const &tok,
             std::function<index_accessor> const &index,
-            std::string const &regex) -> std::vector<sentid_t>
+            std::string const &regex) -> search_result
 {
     fmt::println("Regex = {}", regex);
 
@@ -214,12 +222,13 @@ auto search(tokenizer const &tok,
             }
             last_sent_id = entry.sent_id;
         }
-        return output;
+        return {output, true};
     }
 
     auto cand_lists = std::vector<std::vector<token_range>>{};
+    bool needs_recheck = false;
 
-    std::unordered_map<int, std::optional<std::vector<token_range>>> cache;
+    std::unordered_map<int, cand_result> cache;
     std::set<int> visited_states = {dfa.start_state};
 
     struct token_and_offset
@@ -251,13 +260,14 @@ auto search(tokenizer const &tok,
             cand_lists.push_back(std::move(matches));
         } else {
             visited_states.insert(new_state);
-            auto cands = generate_cands(new_state, visited_states, token_str, tok, dfa, index, cache);
+            auto r = generate_cands(new_state, visited_states, token_str, tok, dfa, index, cache);
             visited_states.erase(new_state);
-            if (cands.has_value()) {
-                cand_lists.push_back(followed_by(matches, cands.value()));
+            if (r.cands.has_value()) {
+                cand_lists.push_back(followed_by(matches, r.cands.value()));
             } else {
                 cand_lists.push_back(matches);
             }
+            needs_recheck = needs_recheck || r.needs_recheck;
         }
 
         num_elems += cand_lists.back().size();
@@ -276,13 +286,16 @@ auto search(tokenizer const &tok,
                 }
                 last_sent_id = entry.sent_id;
             }
-            return output;
+            return {output, true};
         }
     }
 
     std::fflush(stdout);
 
-    return get_sent_ids(merge_sorted_lists(cand_lists));
+    return {
+        get_sent_ids(merge_sorted_lists(cand_lists)),
+        needs_recheck,
+    };
 }
 
 } // namespace corpus_search

@@ -63,9 +63,15 @@ typedef struct
     index_accessor func;
 } index_accessor_cb;
 
-sentid_vec search_corpus(tokenizer tok,
-                         index_accessor_cb callback,
-                         char const *search_term) noexcept;
+typedef struct
+{
+    sentid_vec candidates;
+    bool needs_recheck;
+} search_result;
+
+search_result search_corpus(tokenizer tok,
+                            index_accessor_cb callback,
+                            char const *search_term) noexcept;
 sentid_t const *sentid_vec_get_data(sentid_vec vec) noexcept;
 size_t sentid_vec_get_size(sentid_vec vec) noexcept;
 void destroy_sentid_vec(sentid_vec vec) noexcept;

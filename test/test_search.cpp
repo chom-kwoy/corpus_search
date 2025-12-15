@@ -34,19 +34,19 @@ static auto measure_time(std::string search_term) -> std::vector<sentid_t>
 
     auto end_time = high_resolution_clock::now();
 
-    if (result.size() < 200) {
+    if (result.candidates.size() < 200) {
         fmt::println("Result for '{}' = Array[{}]{{{}}}",
                      search_term,
-                     result.size(),
-                     fmt::join(result, ", "));
+                     result.candidates.size(),
+                     fmt::join(result.candidates, ", "));
     } else {
-        fmt::println("Result for '{}' = Array[{}]{{...}}", search_term, result.size());
+        fmt::println("Result for '{}' = Array[{}]{{...}}", search_term, result.candidates.size());
     }
 
     auto elapsed = end_time - start_time;
     fmt::println("Took {}.", duration_cast<duration<float>>(elapsed));
 
-    return result;
+    return result.candidates;
 }
 
 class Searcher : public ::testing::Test

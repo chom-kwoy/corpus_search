@@ -163,8 +163,8 @@ int64 ibpe_getbitmap(IndexScanDesc scan, TIDBitmap *tbm)
         .user_data = &access_state,
         .func = ibpe_access_index,
     };
-    sentid_vec results = search_corpus(cache->tok, callback, search_term);
-    if (!results) {
+    search_result results = search_corpus(cache->tok, callback, search_term);
+    if (!results.candidates) {
         elog(WARNING, "Search failed. Returning 0 results");
 
         FreeAccessStrategy(bas);
@@ -173,8 +173,8 @@ int64 ibpe_getbitmap(IndexScanDesc scan, TIDBitmap *tbm)
 
     FreeAccessStrategy(bas);
 
-    sentid_t const *data = sentid_vec_get_data(results);
-    int size = sentid_vec_get_size(results);
+    sentid_t const *data = sentid_vec_get_data(results.candidates);
+    int size = sentid_vec_get_size(results.candidates);
 
     elog(NOTICE, "ibpe_getbitmap: Found %d results", size);
 
@@ -187,11 +187,11 @@ int64 ibpe_getbitmap(IndexScanDesc scan, TIDBitmap *tbm)
         tid.ip_posid = data[i] & 0xFFFF;
 
         if (data[i] != 0) { // FIXME: search returns invalid sent_id=0 sometimes
-            tbm_add_tuples(tbm, &tid, 1, true);
+            tbm_add_tuples(tbm, &tid, 1, results.needs_recheck);
         }
     }
 
-    destroy_sentid_vec(results);
+    destroy_sentid_vec(results.candidates);
 
     return size;
 }

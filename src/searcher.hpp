@@ -27,9 +27,15 @@ struct token_range
 
 using index_accessor = auto(int token) -> std::vector<token_range>;
 
+struct search_result
+{
+    std::vector<sentid_t> candidates;
+    bool needs_recheck;
+};
+
 auto search(tokenizer const &tok,
             std::function<index_accessor> const &index,
-            std::string const &regex) -> std::vector<sentid_t>;
+            std::string const &regex) -> search_result;
 
 } // namespace corpus_search
 

@@ -112,7 +112,7 @@ auto corpus_search::backend::tokenizer_get_vocab_size(tokenizer tok) noexcept ->
 
 auto corpus_search::backend::search_corpus(tokenizer tok,
                                            index_accessor_cb callback,
-                                           char const *search_term) noexcept -> sentid_vec
+                                           char const *search_term) noexcept -> search_result
 {
     try {
         auto tok_ptr = reinterpret_cast<corpus_search::tokenizer *>(tok);
@@ -141,10 +141,13 @@ auto corpus_search::backend::search_corpus(tokenizer tok,
 
         auto result = corpus_search::search(*tok_ptr, cb, std::string(search_term));
 
-        auto sentid_vector = new std::vector<sentid_t>(std::move(result));
-        return reinterpret_cast<sentid_vec>(sentid_vector);
+        auto sentid_vector = new std::vector<sentid_t>(std::move(result.candidates));
+        return {
+            reinterpret_cast<sentid_vec>(sentid_vector),
+            result.needs_recheck,
+        };
     } catch (...) {
-        return nullptr;
+        return {nullptr, true};
     }
 }
 
