@@ -63,29 +63,23 @@ TEST_F(Searcher, SearchStringSimple1)
 {
     EXPECT_EQ(measure_time("ho").size(), 811'085);
 }
-
 TEST_F(Searcher, SearchStringSimple2)
 {
-    EXPECT_EQ(measure_time("z").size(), 20'621);
     EXPECT_EQ(measure_time("o").size(), 1'286'817);
+}
+TEST_F(Searcher, SearchStringSimple3)
+{
+    EXPECT_EQ(measure_time("z").size(), 20'621);
+}
+TEST_F(Searcher, SearchStringSimple4)
+{
     EXPECT_EQ(measure_time("TT").size(), 0);
-}
-
-TEST_F(Searcher, SearchRegexMatchAll)
-{
-    EXPECT_EQ(measure_time(".*").size(), 1'734'021);
-}
-
-TEST_F(Searcher, SearchRegexInfinite)
-{
-    EXPECT_EQ(measure_time(".*abc").size(), 1'734'021);
 }
 
 TEST_F(Searcher, SearchStringHard1)
 {
     EXPECT_EQ(measure_time("si\\.ta\\.so\\.ngi\\.ta").size(), 14);
 }
-
 TEST_F(Searcher, SearchStringHard2)
 {
     EXPECT_EQ(measure_time("ho\\.ni").size(), 94'307);
@@ -96,10 +90,16 @@ TEST_F(Searcher, SearchStringHard2)
     EXPECT_EQ(measure_time("家non").size(), 59);
 }
 
-TEST_F(Searcher, SearchRegexEasy)
+TEST_F(Searcher, SearchRegexEasy1)
 {
     EXPECT_EQ(measure_time("cho\\.c[ou]\\.ni").size(), 168);
+}
+TEST_F(Searcher, SearchRegexEasy2)
+{
     EXPECT_EQ(measure_time("cho\\.cw?[ou]\\.n").size(), 231);
+}
+TEST_F(Searcher, SearchRegexEasy3)
+{
     EXPECT_EQ(measure_time("w[ou]\\.toy").size(), 44'782);
 }
 
@@ -107,13 +107,25 @@ TEST_F(Searcher, SearchRegexHard1)
 {
     EXPECT_EQ(measure_time("(k[aeiou]\\.){3}k").size(), 0);
 }
-
 TEST_F(Searcher, SearchRegexHard2)
 {
     EXPECT_EQ(measure_time(HANJA_RE "`i").size(), 61'261);
 }
-
 TEST_F(Searcher, SearchRegexHard3)
 {
+    EXPECT_EQ(measure_time("pskuy....").size(), 1763);
+}
+TEST_F(Searcher, SearchRegexHard4)
+{
     EXPECT_EQ(measure_time("....pskuy").size(), 776);
+}
+
+TEST_F(Searcher, SearchRegexInfinite)
+{
+    EXPECT_EQ(measure_time(".*abc").size(), 0);
+}
+
+TEST_F(Searcher, SearchRegexMatchAll)
+{
+    EXPECT_EQ(measure_time(".*").size(), 1'734'021);
 }
