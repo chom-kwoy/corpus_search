@@ -106,7 +106,9 @@ static int ibpe_access_index(void *user_data, int token, index_entry *data, int 
 
         if (data) {
             data[i] = *((index_entry *) begin);
-            elog(NOTICE, "token=%d: data[%d]=%lu", token, i, data[i].sent_id);
+            if (data[i].sent_id == 0) {
+                elog(NOTICE, "token=%d: data[%d]=%lu", token, i, (sentid_t) data[i].sent_id);
+            }
         }
 
         begin += sizeof(index_entry);
