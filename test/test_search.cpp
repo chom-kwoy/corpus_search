@@ -117,7 +117,7 @@ TEST_F(Searcher, SearchRegexHard3)
 }
 TEST_F(Searcher, SearchRegexHard4)
 {
-    EXPECT_EQ(measure_time("....pskuy").size(), 776);
+    EXPECT_EQ(measure_time("[a-zA-Z. ]{4}pskuy").size(), 771);
 }
 
 TEST_F(Searcher, SearchRegexInfinite)
