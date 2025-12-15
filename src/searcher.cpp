@@ -100,7 +100,7 @@ auto merge_sorted_lists(std::vector<std::vector<token_range>> const &cand_lists)
     return result;
 }
 
-constexpr int CANDS_THRESHOLD = 1'000'000;
+constexpr int CANDS_THRESHOLD = 10'000'000;
 
 auto generate_cands(int state,
                     std::set<int> &visited_states,
