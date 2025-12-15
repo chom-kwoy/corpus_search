@@ -20,6 +20,7 @@ public:
 
     auto get_next_tids(regex::sm::graph const& dfa,
                        int state,
+                       int target_state = -1,
                        int prefix_length = 0) const -> roaring::Roaring;
 
     static constexpr int ACCEPTED = -1;

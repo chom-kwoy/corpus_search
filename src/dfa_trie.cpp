@@ -53,10 +53,13 @@ dfa_trie::~dfa_trie() = default;
 static void recurse(trie_node* node,
                     regex::sm::graph const& dfa,
                     int state,
+                    int target_state,
                     roaring::Roaring& result)
 {
     for (int tid : node->token_ids) {
-        result.add(tid);
+        if (target_state == -1 || state == target_state) {
+            result.add(tid);
+        }
     }
     if (dfa.accept_states.contains(state)) {
         // collect all tokens in the subtree
@@ -66,7 +69,9 @@ static void recurse(trie_node* node,
             auto current = pending.front();
             pending.pop();
             for (int tid : current->token_ids) {
-                result.add(tid);
+                if (target_state == -1 || state == target_state) {
+                    result.add(tid);
+                }
             }
             for (auto& child : current->children) {
                 if (child) {
@@ -78,7 +83,7 @@ static void recurse(trie_node* node,
         for (auto edge : dfa.edges.at(state)) {
             for (int i = edge.range.min; i <= edge.range.max; ++i) {
                 if (node->children[i]) {
-                    recurse(node->children[i].get(), dfa, edge.target_state, result);
+                    recurse(node->children[i].get(), dfa, edge.target_state, target_state, result);
                 }
             }
         }
@@ -87,13 +92,14 @@ static void recurse(trie_node* node,
 
 auto dfa_trie::get_next_tids(regex::sm::graph const& dfa,
                              int state,
+                             int target_state,
                              int prefix_length) const -> roaring::Roaring
 {
-    if (prefix_length >= tries.size()) {
-        return {};
-    }
     roaring::Roaring result;
-    recurse(tries[prefix_length].root.get(), dfa, state, result);
+    if (prefix_length >= tries.size()) {
+        return result;
+    }
+    recurse(tries[prefix_length].root.get(), dfa, state, target_state, result);
     return result;
 }
 
