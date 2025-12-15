@@ -100,14 +100,16 @@ auto merge_sorted_lists(std::vector<std::vector<token_range>> const &cand_lists)
     return result;
 }
 
+constexpr int CANDS_THRESHOLD = 1'000'000;
+
 auto generate_cands(int state,
                     std::set<int> &visited_states,
                     std::string const &prev_prefix, // for debugging only
                     tokenizer const &tok,
                     regex::sm::graph const &dfa,
                     std::function<index_accessor> const &index,
-                    std::unordered_map<int, std::vector<token_range>> &cache,
-                    int level = 1) -> std::vector<token_range>
+                    std::unordered_map<int, std::optional<std::vector<token_range>>> &cache,
+                    int level = 1) -> std::optional<std::vector<token_range>>
 {
     if (cache.contains(state)) {
         return cache.at(state);
@@ -120,9 +122,11 @@ auto generate_cands(int state,
                  state,
                  prev_prefix,
                  next_tokens.cardinality());
+    std::fflush(stdout);
 
     auto full_cands = std::vector<std::vector<token_range>>{};
 
+    int num_elems = 0;
     for (int token : next_tokens) {
         assert(token != tok.EOS_TOKEN_ID);
 
@@ -138,32 +142,51 @@ auto generate_cands(int state,
         assert(new_state != dfa_trie::REJECTED);
         if (new_state == dfa_trie::ACCEPTED) {
             full_cands.push_back(std::move(matches));
-            continue;
-        }
-
-        if (visited_states.contains(new_state)) {
+        } else if (visited_states.contains(new_state)) {
             // infinite recursion detected
-            throw std::runtime_error("infinite recursion detected");
+            fmt::println("Warning: infinite recursion detected; aborting..");
+            std::fflush(stdout);
+
+            return cache[state] = std::nullopt;
+        } else {
+            visited_states.insert(new_state);
+            auto cands = generate_cands(new_state,
+                                        visited_states,
+                                        cur_prefix,
+                                        tok,
+                                        dfa,
+                                        index,
+                                        cache,
+                                        level + 1);
+            visited_states.erase(new_state);
+            if (cands.has_value()) {
+                full_cands.push_back(followed_by(matches, cands.value()));
+            } else {
+                full_cands.push_back(matches);
+            }
         }
 
-        visited_states.insert(new_state);
-        auto cands = generate_cands(new_state,
-                                    visited_states,
-                                    cur_prefix,
-                                    tok,
-                                    dfa,
-                                    index,
-                                    cache,
-                                    level + 1);
-        visited_states.erase(new_state);
-        full_cands.push_back(followed_by(matches, cands));
+        num_elems += full_cands.back().size();
+
+        if (num_elems > CANDS_THRESHOLD) {
+            fmt::println("Warning: more than {} candidate matches generated; aborting..",
+                         CANDS_THRESHOLD);
+            std::fflush(stdout);
+
+            return cache[state] = std::nullopt;
+        }
     }
+
+    fmt::println("Merging {} lists with {} elems total", full_cands.size(), num_elems);
+    std::fflush(stdout);
 
     // union the sorted sequences in vec_result
     auto full_result = merge_sorted_lists(full_cands);
-    cache[state] = full_result;
 
-    return full_result;
+    fmt::println("Merge complete. size={}", full_result.size());
+    std::fflush(stdout);
+
+    return cache[state] = full_result;
 }
 
 } // namespace
@@ -202,7 +225,7 @@ auto search(tokenizer const &tok,
 
     auto cand_lists = std::vector<std::vector<token_range>>{};
 
-    std::unordered_map<int, std::vector<token_range>> cache;
+    std::unordered_map<int, std::optional<std::vector<token_range>>> cache;
     std::set<int> visited_states = {dfa.start_state};
 
     struct token_and_offset
@@ -219,6 +242,7 @@ auto search(tokenizer const &tok,
 
     fmt::println("lvl {}: '{}' (+ {} tokens)", 0, "", next_tokens.size());
 
+    int num_elems = 0;
     for (auto [tid, pad] : next_tokens) {
         auto matches = index(tid);
         if (matches.size() == 0) {
@@ -235,7 +259,30 @@ auto search(tokenizer const &tok,
             visited_states.insert(new_state);
             auto cands = generate_cands(new_state, visited_states, token_str, tok, dfa, index, cache);
             visited_states.erase(new_state);
-            cand_lists.push_back(followed_by(matches, cands));
+            if (cands.has_value()) {
+                cand_lists.push_back(followed_by(matches, cands.value()));
+            } else {
+                cand_lists.push_back(matches);
+            }
+        }
+
+        num_elems += cand_lists.back().size();
+
+        if (num_elems > CANDS_THRESHOLD) {
+            fmt::println("Warning: more than {} candidate matches generated; aborting..",
+                         CANDS_THRESHOLD);
+            std::fflush(stdout);
+
+            // return everything
+            std::vector<sentid_t> output;
+            sentid_t last_sent_id = -1;
+            for (auto entry : index(tok.BOS_TOKEN_ID)) {
+                if (entry.sent_id != last_sent_id) {
+                    output.push_back(entry.sent_id);
+                }
+                last_sent_id = entry.sent_id;
+            }
+            return output;
         }
     }
 

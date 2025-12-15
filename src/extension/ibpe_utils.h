@@ -60,9 +60,6 @@ int ibpe_page_get_free_space(Page page);
 /* parse index reloptions */
 bytea *ibpe_options(Datum reloptions, bool validate);
 
-/* Check whether the index can support index-only scans on the given column */
-bool ibpe_canreturn(Relation indexRelation, int attno);
-
 /* estimate cost of an indexscan */
 void ibpe_costestimate(struct PlannerInfo *root,
                        struct IndexPath *path,
