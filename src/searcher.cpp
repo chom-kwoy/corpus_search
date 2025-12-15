@@ -212,7 +212,7 @@ auto search(tokenizer const &tok,
     };
     auto next_tokens = std::vector<token_and_offset>{};
     for (int pad = 0; pad < tok.max_token_bytes(); ++pad) {
-        for (int token : tok.trie().get_next_tids(dfa, dfa.start_state, pad)) {
+        for (int token : tok.trie().get_next_tids(dfa, dfa.start_state, -1, pad)) {
             next_tokens.push_back({token, pad});
         }
     }
