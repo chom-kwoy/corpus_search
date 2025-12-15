@@ -183,7 +183,13 @@ int64 ibpe_getbitmap(IndexScanDesc scan, TIDBitmap *tbm)
         tid.ip_blkid.bi_lo = (data[i] >> 16) & 0xFFFF;
         tid.ip_posid = data[i] & 0xFFFF;
 
-        tbm_add_tuples(tbm, &tid, 1, false);
+        elog(NOTICE,
+             "bi_hi=%d, bi_lo=%d, posid=%d",
+             tid.ip_blkid.bi_hi,
+             tid.ip_blkid.bi_lo,
+             tid.ip_posid);
+
+        tbm_add_tuples(tbm, &tid, 1, true);
     }
 
     destroy_sentid_vec(results);
