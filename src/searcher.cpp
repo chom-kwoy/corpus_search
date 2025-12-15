@@ -177,14 +177,8 @@ auto generate_cands(int state,
         }
     }
 
-    fmt::println("Merging {} lists with {} elems total", full_cands.size(), num_elems);
-    std::fflush(stdout);
-
     // union the sorted sequences in vec_result
     auto full_result = merge_sorted_lists(full_cands);
-
-    fmt::println("Merge complete. size={}", full_result.size());
-    std::fflush(stdout);
 
     return cache[state] = full_result;
 }

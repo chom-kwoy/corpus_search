@@ -178,20 +178,6 @@ int64 ibpe_getbitmap(IndexScanDesc scan, TIDBitmap *tbm)
 
     elog(NOTICE, "ibpe_getbitmap: Found %d results", size);
 
-    for (int i = 0; i < size; ++i) {
-        ItemPointerData tid;
-
-        tid.ip_blkid.bi_hi = (data[i] >> 32) & 0xFFFF;
-        tid.ip_blkid.bi_lo = (data[i] >> 16) & 0xFFFF;
-        tid.ip_posid = data[i] & 0xFFFF;
-
-        elog(NOTICE,
-             "bi_hi=%d, bi_lo=%d, posid=%d",
-             tid.ip_blkid.bi_hi,
-             tid.ip_blkid.bi_lo,
-             tid.ip_posid);
-    }
-
     // fill tbm with results
     for (int i = 0; i < size; ++i) {
         ItemPointerData tid;
@@ -200,7 +186,9 @@ int64 ibpe_getbitmap(IndexScanDesc scan, TIDBitmap *tbm)
         tid.ip_blkid.bi_lo = (data[i] >> 16) & 0xFFFF;
         tid.ip_posid = data[i] & 0xFFFF;
 
-        tbm_add_tuples(tbm, &tid, 1, true);
+        if (data[i] != 0) { // FIXME: search returns invalid sent_id=0 sometimes
+            tbm_add_tuples(tbm, &tid, 1, true);
+        }
     }
 
     destroy_sentid_vec(results);
