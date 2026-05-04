@@ -69,7 +69,7 @@ auto load_file(std::string const &path) -> std::unordered_map<sentid_t, std::vec
 auto index_builder::from_file(const std::string &tokenized_sentences_path) -> index_builder
 {
     // load index
-    fmt::println("Loading sentences...");
+    fmt::println("Loading sentences from {}...", tokenized_sentences_path);
     std::fflush(stdout);
 
     auto sentences = load_file(tokenized_sentences_path);

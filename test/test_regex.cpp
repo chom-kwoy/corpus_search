@@ -365,7 +365,7 @@ TEST(Regex, RegexTrieParity)
 {
     const std::string regex = "[^\u4FCD-\u9FCC\u3400-\u4DB5]`i";
 
-    auto file = std::ifstream(TOKENIZER_FILE);
+    auto file = std::ifstream(get_tok_path());
     auto json = nlohmann::json::parse((std::stringstream{} << file.rdbuf()).str());
 
     auto tokenizer = load_llg_tokenizer(get_tok(), json);

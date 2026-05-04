@@ -4,13 +4,20 @@
 #include "index_builder.hpp"
 #include "tokenizer.hpp"
 
-constexpr auto TOKENIZER_FILE = "/home/park/devel/mk-tokenizer/bpe_tokenizer-12/tokenizer.json";
-constexpr auto CORPUS_FILE = "/home/park/devel/mk-tokenizer/tokenized_sentences12.msgpack";
+inline auto get_tok_path() -> const char*
+{
+    const char* tokenizer_file = std::getenv("IBPE_TEST_TOKENIZER_FILE");
+    if (tokenizer_file == nullptr) {
+        throw std::runtime_error(
+            "Set IBPE_TEST_TOKENIZER_FILE to the appropriate tokenizer.json file path");
+    }
+    return tokenizer_file;
+}
 
 inline auto get_tok() -> corpus_search::tokenizer &
 {
     static auto t = corpus_search::tokenizer{
-        TOKENIZER_FILE,
+        get_tok_path(),
         {{'.', 'x'}, {'/', 'Z'}, {'\\', 'X'}, {'`', 'C'}},
         true,
     };
@@ -19,7 +26,12 @@ inline auto get_tok() -> corpus_search::tokenizer &
 
 inline auto get_index() -> corpus_search::index_builder &
 {
-    static auto idx = corpus_search::index_builder::from_file(CORPUS_FILE);
+    const char* corpus_file = std::getenv("IBPE_TEST_CORPUS_FILE");
+    if (corpus_file == nullptr) {
+        throw std::runtime_error(
+            "Set IBPE_TEST_CORPUS_FILE to the appropriate tokenized_sentences.msgpack file path");
+    }
+    static auto idx = corpus_search::index_builder::from_file(corpus_file);
     return idx;
 }
 
