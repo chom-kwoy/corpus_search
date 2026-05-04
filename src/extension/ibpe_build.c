@@ -312,10 +312,7 @@ static void ibpe_build_callback(Relation indexRelation,
              n_tokens);
     }
 
-    sentid_t sent_id = 0;
-    sent_id |= ((sentid_t) tid->ip_blkid.bi_hi << 32);
-    sent_id |= ((sentid_t) tid->ip_blkid.bi_lo << 16);
-    sent_id |= (sentid_t) tid->ip_posid;
+    sentid_t sent_id = ibpe_tid_to_sentid(tid);
 
     index_builder_add_sentence(build_state->builder, sent_id, tokens, n_tokens);
 
@@ -569,10 +566,7 @@ bool ibpe_insert(Relation indexRelation,
         return false;
     }
 
-    sentid_t sent_id = 0;
-    sent_id |= ((sentid_t) heap_tid->ip_blkid.bi_hi << 32);
-    sent_id |= ((sentid_t) heap_tid->ip_blkid.bi_lo << 16);
-    sent_id |= (sentid_t) heap_tid->ip_posid;
+    sentid_t sent_id = ibpe_tid_to_sentid(heap_tid);
 
     /*
      * Resolve the tail of the pending chain if this is the first insert in

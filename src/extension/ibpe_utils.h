@@ -60,6 +60,25 @@ typedef struct
     index_entry entry;
 } ibpe_pending_entry;
 
+// TID <-> sentid_t conversion
+static inline sentid_t ibpe_tid_to_sentid(ItemPointer tid)
+{
+    sentid_t sid = 0;
+    sid |= ((sentid_t) tid->ip_blkid.bi_hi << 32);
+    sid |= ((sentid_t) tid->ip_blkid.bi_lo << 16);
+    sid |= (sentid_t) tid->ip_posid;
+    return sid;
+}
+
+static inline ItemPointerData ibpe_sentid_to_tid(sentid_t sid)
+{
+    ItemPointerData tid;
+    tid.ip_blkid.bi_hi = (sid >> 32) & 0xFFFF;
+    tid.ip_blkid.bi_lo = (sid >> 16) & 0xFFFF;
+    tid.ip_posid = sid & 0xFFFF;
+    return tid;
+}
+
 // page related utils
 ibpe_opaque_data *ibpe_get_opaque(Page page);
 

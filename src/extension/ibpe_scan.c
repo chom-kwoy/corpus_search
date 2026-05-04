@@ -233,13 +233,8 @@ int64 ibpe_getbitmap(IndexScanDesc scan, TIDBitmap *tbm)
 
     // fill tbm with results
     for (int i = 0; i < size; ++i) {
-        ItemPointerData tid;
-
-        tid.ip_blkid.bi_hi = (data[i] >> 32) & 0xFFFF;
-        tid.ip_blkid.bi_lo = (data[i] >> 16) & 0xFFFF;
-        tid.ip_posid = data[i] & 0xFFFF;
-
         if (data[i] != 0) { // FIXME: search returns invalid sent_id=0 sometimes
+            ItemPointerData tid = ibpe_sentid_to_tid(data[i]);
             tbm_add_tuples(tbm, &tid, 1, results.needs_recheck);
         }
     }
