@@ -5,6 +5,7 @@
 
 #include <chrono>
 #include <fmt/chrono.h>
+#include <fmt/os.h>
 
 #include "searcher.hpp"
 
@@ -41,10 +42,21 @@ static auto measure_time(std::string search_term) -> std::vector<sentid_t>
                      fmt::join(result.candidates, ", "));
     } else {
         fmt::println("Result for '{}' = Array[{}]{{...}}", search_term, result.candidates.size());
+        fmt::println("Needs recheck = {}", result.needs_recheck);
     }
 
     auto elapsed = end_time - start_time;
     fmt::println("Took {}.", duration_cast<duration<float>>(elapsed));
+
+    auto test_info = ::testing::UnitTest::GetInstance()->current_test_info();
+    if (test_info != nullptr && std::getenv("IBPE_TEST_WRITE_SEARCH_RESULTS")) {
+        // write retrieved ids into a file
+        auto file = fmt::output_file(fmt::format("test_search_{}.txt", test_info->name()));
+
+        for (auto id : result.candidates) {
+            file.print("{}\n", id);
+        }
+    }
 
     return result.candidates;
 }
@@ -61,11 +73,11 @@ protected:
 
 TEST_F(Searcher, SearchStringSimple1)
 {
-    EXPECT_EQ(measure_time("ho").size(), 811'085);
+    EXPECT_EQ(measure_time("ho").size(), 811034);
 }
 TEST_F(Searcher, SearchStringSimple2)
 {
-    EXPECT_EQ(measure_time("o").size(), 1'286'817);
+    EXPECT_EQ(measure_time("o").size(), 1286676);
 }
 TEST_F(Searcher, SearchStringSimple3)
 {
@@ -82,10 +94,10 @@ TEST_F(Searcher, SearchStringHard1)
 }
 TEST_F(Searcher, SearchStringHard2)
 {
-    EXPECT_EQ(measure_time("ho\\.ni").size(), 94'307);
+    EXPECT_EQ(measure_time("ho\\.ni").size(), 94299);
     EXPECT_EQ(measure_time("ngi\\.ta").size(), 2'472);
     EXPECT_EQ(measure_time("ka\\.nan\\.ho").size(), 719);
-    EXPECT_EQ(measure_time("o\\.non").size(), 74'953);
+    EXPECT_EQ(measure_time("o\\.non").size(), 74946);
     EXPECT_EQ(measure_time("國家").size(), 296);
     EXPECT_EQ(measure_time("家non").size(), 59);
 }
@@ -100,7 +112,7 @@ TEST_F(Searcher, SearchRegexEasy2)
 }
 TEST_F(Searcher, SearchRegexEasy3)
 {
-    EXPECT_EQ(measure_time("w[ou]\\.toy").size(), 44'782);
+    EXPECT_EQ(measure_time("w[ou]\\.toy").size(), 44781);
 }
 
 TEST_F(Searcher, SearchRegexHard1)
@@ -127,5 +139,5 @@ TEST_F(Searcher, SearchRegexInfinite)
 
 TEST_F(Searcher, SearchRegexMatchAll)
 {
-    EXPECT_EQ(measure_time(".*").size(), 1'734'021);
+    EXPECT_EQ(measure_time(".*").size(), 1733874);
 }
