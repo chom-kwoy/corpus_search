@@ -328,4 +328,29 @@ auto sm::graph::match(std::string_view str) const -> bool
     return accept_states.contains(state);
 }
 
+void print_dfa(sm::graph const& dfa)
+{
+    fmt::println("DFA: start_state={}, accept_states=[{}], num_states={}",
+                 dfa.start_state,
+                 fmt::join(dfa.accept_states, ", "),
+                 dfa.num_states);
+
+    auto printch = [](char ch) {
+        if (std::isprint(ch)) {
+            return fmt::format("'{}'", ch);
+        }
+        return fmt::format("\\x{:02x}", ch);
+    };
+
+    for (auto&& [state, edges] : dfa.edges) {
+        fmt::println("State {} {}", state, dfa.accept_states.contains(state) ? "(accept)" : "");
+        for (auto&& edge : edges) {
+            fmt::println("  [{}-{}] --> State {}",
+                         printch(edge.range.min),
+                         printch(edge.range.max),
+                         edge.target_state);
+        }
+    };
+}
+
 } // namespace corpus_search::regex

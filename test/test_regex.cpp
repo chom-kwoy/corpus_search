@@ -8,31 +8,7 @@
 #include <nlohmann/json.hpp>
 
 #include "dfa_trie.hpp"
-
-static void print_dfa(corpus_search::regex::sm::graph const& dfa)
-{
-    fmt::println("DFA: start_state={}, accept_states=[{}], num_states={}",
-                 dfa.start_state,
-                 fmt::join(dfa.accept_states, ", "),
-                 dfa.num_states);
-
-    auto printch = [](char ch) {
-        if (std::isprint(ch)) {
-            return fmt::format("'{}'", ch);
-        }
-        return fmt::format("\\x{:02x}", ch);
-    };
-
-    for (auto&& [state, edges] : dfa.edges) {
-        fmt::println("State {} {}", state, dfa.accept_states.contains(state) ? "(accept)" : "");
-        for (auto&& edge : edges) {
-            fmt::println("  [{}-{}] --> State {}",
-                         printch(edge.range.min),
-                         printch(edge.range.max),
-                         edge.target_state);
-        }
-    };
-}
+#include "regex_dfa.hpp"
 
 static auto test_parse(std::string regex,
                        std::vector<std::pair<std::string, bool>> test_strings = {})
@@ -47,7 +23,7 @@ static auto test_parse(std::string regex,
     fmt::println("AST: {}", corpus_search::regex::print_ast(ast));
 
     auto dfa = corpus_search::regex::ast_to_dfa(ast);
-    print_dfa(dfa);
+    corpus_search::regex::print_dfa(dfa);
 
     fmt::println("");
     std::fflush(stdout);

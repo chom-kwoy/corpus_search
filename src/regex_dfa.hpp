@@ -37,6 +37,8 @@ struct graph
 
 auto ast_to_dfa(ast::node const& node) -> sm::graph;
 
+void print_dfa(sm::graph const& dfa);
+
 } // namespace corpus_search::regex
 
 #endif // REGEX_DFA_HPP

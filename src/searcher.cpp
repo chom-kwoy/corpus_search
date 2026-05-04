@@ -211,6 +211,8 @@ auto search(tokenizer const &tok,
                  fmt::join(dfa.accept_states, ", "),
                  dfa.num_states);
 
+    corpus_search::regex::print_dfa(dfa);
+
     if (dfa.accept_states.contains(dfa.start_state)) {
         // every string matches
         fmt::println("DFA accepts empty string; returning all sentence IDs.");
