@@ -119,6 +119,10 @@ target_link_libraries(lib_corpus_search PUBLIC taocpp::pegtl)
 find_package(Boost REQUIRED)
 target_include_directories(lib_corpus_search PRIVATE ${Boost_INCLUDE_DIRS})
 
+## ICU - unicode property support for \p{...} in regex ##
+find_package(ICU REQUIRED COMPONENTS uc i18n)
+target_link_libraries(lib_corpus_search PRIVATE ICU::uc ICU::i18n)
+
 ## roaring bitmap ##
 CPMAddPackage(
   NAME roaring

@@ -3,6 +3,7 @@
 #include <fmt/core.h>
 #include <fmt/ranges.h>
 #include <roaring.hh>
+#include <unicode/uniset.h>
 #include <utf8.h>
 
 namespace corpus_search::regex {
@@ -60,9 +61,28 @@ static auto character_set(T const& node) -> roaring::Roaring
             throw std::runtime_error("unsupported set kind");
         }
     } else if constexpr (std::is_same_v<T, cst::unicode_property_character_set>) {
-        throw std::runtime_error("unicode property set not implemented");
-        // TODO
-        return {};
+        std::string pattern = "[\\p{";
+        pattern += node.property;
+        if (node.value.has_value()) {
+            pattern += "=";
+            pattern += *node.value;
+        }
+        pattern += "}]";
+
+        UErrorCode status = U_ZERO_ERROR;
+        icu::UnicodeSet icuset(icu::UnicodeString::fromUTF8(pattern), status);
+        if (U_FAILURE(status)) {
+            throw std::runtime_error("unknown unicode property: " + pattern);
+        }
+
+        auto set = roaring::Roaring{};
+        for (int32_t i = 0; i < icuset.getRangeCount(); ++i) {
+            set.addRangeClosed(icuset.getRangeStart(i), icuset.getRangeEnd(i));
+        }
+        if (node.negate) {
+            set.flipClosed(0, UNICODE_MAX);
+        }
+        return set;
     } else if constexpr (std::is_same_v<T, char32_t>) {
         auto set = roaring::Roaring{};
         set.add(node);

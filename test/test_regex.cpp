@@ -299,6 +299,55 @@ TEST(Regex, RegexComplex)
     test_parse("abc[a-zA-Z]+?(?<name>st|uv)(?:pid)*\\b\\d*\\?\\p{Script=Han}$");
 }
 
+TEST(Regex, UnicodeProperty)
+{
+    // General category: Letter (\p{L})
+    test_parse("\\p{L}",
+               {
+                   {"a", true},
+                   {"\xED\x95\x9C", true},  // 한 (U+D55C, Korean letter)
+                   {"1", false},
+                   {" ", false},
+                   {".", false},
+               });
+
+    // General category: Uppercase Letter (\p{Lu})
+    test_parse("\\p{Lu}",
+               {
+                   {"A", true},
+                   {"\xCE\xA9", true},  // Ω (U+03A9, Greek capital letter Omega)
+                   {"a", false},
+                   {"1", false},
+               });
+
+    // Negated: non-letter (\P{L})
+    test_parse("\\P{L}",
+               {
+                   {"1", true},
+                   {".", true},
+                   {"a", false},
+                   {"\xED\x95\x9C", false},  // 한
+               });
+
+    // Script property: Han
+    test_parse("\\p{Script=Han}",
+               {
+                   {"\xE6\xB1\x89", true},  // 汉 (U+6C49)
+                   {"\xE8\xAA\x9E", true},  // 語 (U+8A9E)
+                   {"a", false},
+                   {"1", false},
+               });
+
+    // General category via gc= alias: Decimal Number
+    test_parse("\\p{gc=Nd}",
+               {
+                   {"0", true},
+                   {"5", true},
+                   {"a", false},
+                   {".", false},
+               });
+}
+
 TEST(Regex, RegexTrie)
 {
     auto dfa = test_parse("(k[aeiou]\\.){3}k");
