@@ -296,7 +296,44 @@ TEST(Regex, RegexEscapeCharSet)
 
 TEST(Regex, RegexComplex)
 {
+    // \b and $ are treated as ε in the DFA (over-approximation); pattern still parses/builds.
     test_parse("abc[a-zA-Z]+?(?<name>st|uv)(?:pid)*\\b\\d*\\?\\p{Script=Han}$");
+}
+
+TEST(Regex, Assertions)
+{
+    // ^ treated as ε: DFA for ^foo matches anything foo matches (full-string semantics
+    // already anchor to start, so match() results are exact for these cases).
+    test_parse("^foo",
+               {
+                   {"foo", true},
+                   {"foobar", false},
+                   {"bar", false},
+               });
+
+    // $ treated as ε: same reasoning.
+    test_parse("foo$",
+               {
+                   {"foo", true},
+                   {"barfoo", false},
+                   {"foobar", false},
+               });
+
+    // Combined anchors.
+    test_parse("^foo$",
+               {
+                   {"foo", true},
+                   {"foobar", false},
+                   {"barfoo", false},
+               });
+
+    // \b treated as ε: DFA over-approximates (matches foobar even without a real boundary),
+    // but needs_recheck=true filters false positives during index scans.
+    test_parse("\\bfoo\\b");
+
+    // Assertions mixed with other constructs must not throw.
+    test_parse("^\\d+$");
+    test_parse("\\bword\\b");
 }
 
 TEST(Regex, UnicodeProperty)

@@ -38,10 +38,8 @@ struct mark_state
             [my_pos, this](auto&& node) -> node_table {
                 using T = std::decay_t<decltype(node)>;
                 if constexpr (std::is_same_v<T, ast::node_empty>) {
-                    if (node.assertion != ast::assertion_kind::none) {
-                        // TODO: handle assertions
-                        throw std::runtime_error("Assertions not implemented");
-                    }
+                    // Assertions (^, $, \b, \B) are treated as ε.
+                    // The DFA over-approximates; needs_recheck=true handles correctness.
                     return {{}, {}, true};
                 } else if constexpr (std::is_same_v<T, ast::node_range>) {
                     cur_pos++;
