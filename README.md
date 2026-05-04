@@ -3,6 +3,8 @@
 
 corpus_search is a library and a PostgreSQL extension for efficient regex corpus search.
 
+See [the blog post](https://blog.xn--gt1b.xyz/computer-science/2025/12/11/chocassye-regex-search.html) for the explanation.
+
 See [BUILD.md](BUILD.md) for build instructions.
 
 # Testing commands
