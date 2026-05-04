@@ -41,82 +41,92 @@ typedef struct
     Relation indexRelation;
     ibpe_relcache *cache;
     BufferAccessStrategy bas;
+    // flat array of all pending entries, loaded once per scan
+    ibpe_pending_entry *pending;
+    int n_pending;
 } ibpe_access_index_state;
 
 static int ibpe_access_index(void *user_data, int token, index_entry *data, int num_entries)
 {
     ibpe_access_index_state *state = user_data;
 
-    if (token < 0 || token >= state->cache->vocab_size) {
-        elog(ERROR, "ibpe_access_index: token %d out of range", token);
+    int num_elems = 0;
+
+    if (state->cache->vocab_size > 0 && state->cache->token_sid_map != NULL) {
+        if (token < 0 || token >= state->cache->vocab_size)
+            elog(ERROR, "ibpe_access_index: token %d out of range", token);
     }
 
-    ibpe_ptr_record ptr = state->cache->token_sid_map[token];
+    ibpe_ptr_record ptr = (state->cache->vocab_size > 0 && state->cache->token_sid_map != NULL)
+                              ? state->cache->token_sid_map[token]
+                              : (ibpe_ptr_record){.token = token, .blkno = InvalidBlockNumber, .offset = -1};
 
-    // no entries for this token
-    if (ptr.blkno == InvalidBlockNumber) {
-        return 0;
-    }
+    if (ptr.blkno != InvalidBlockNumber) {
+        Buffer buffer = ReadBufferExtended(state->indexRelation,
+                                           MAIN_FORKNUM,
+                                           ptr.blkno,
+                                           RBM_NORMAL,
+                                           state->bas);
+        LockBuffer(buffer, BUFFER_LOCK_SHARE);
+        Page page = BufferGetPage(buffer);
 
-    Buffer buffer = ReadBufferExtended(state->indexRelation,
-                                       MAIN_FORKNUM,
-                                       ptr.blkno,
-                                       RBM_NORMAL,
-                                       state->bas);
-    LockBuffer(buffer, BUFFER_LOCK_SHARE);
-    Page page = BufferGetPage(buffer);
+        char const *begin = PageGetContents(page) + ptr.offset;
+        char const *end = page + ((PageHeader) page)->pd_upper;
 
-    char const *begin = PageGetContents(page) + ptr.offset;
-    char const *end = page + ((PageHeader) page)->pd_upper;
+        num_elems = *((int *) begin);
+        begin += sizeof(int);
 
-    int num_elems = *((int *) begin);
-    begin += sizeof(int);
+        for (int i = 0; i < num_elems; ++i) {
+            if (i >= num_entries)
+                break;
 
-    for (int i = 0; i < num_elems; ++i) {
-        if (i >= num_entries) {
-            break;
-        }
+            if (begin + sizeof(index_entry) > end) {
+                int next_blkno = ibpe_get_opaque(page)->next_blkno;
+                if (next_blkno == InvalidBlockNumber)
+                    elog(ERROR,
+                         "ibpe_access_index: unexpected end of pages when reading #%d out of %d "
+                         "entries for token %d",
+                         i,
+                         num_entries,
+                         token);
 
-        if (begin + sizeof(index_entry) > end) {
-            // follow pointer to next page blkno
-            int next_blkno = ibpe_get_opaque(page)->next_blkno;
-            if (next_blkno == InvalidBlockNumber) {
-                elog(ERROR,
-                     "ibpe_access_index: unexpected end of pages when reading #%d out of %d "
-                     "entries for token %d",
-                     i,
-                     num_entries,
-                     token);
+                UnlockReleaseBuffer(buffer);
+
+                buffer = ReadBufferExtended(state->indexRelation,
+                                            MAIN_FORKNUM,
+                                            next_blkno,
+                                            RBM_NORMAL,
+                                            state->bas);
+                LockBuffer(buffer, BUFFER_LOCK_SHARE);
+                page = BufferGetPage(buffer);
+
+                begin = PageGetContents(page);
+                end = page + ((PageHeader) page)->pd_upper;
             }
 
-            UnlockReleaseBuffer(buffer);
-
-            // open next page
-            buffer = ReadBufferExtended(state->indexRelation,
-                                        MAIN_FORKNUM,
-                                        next_blkno,
-                                        RBM_NORMAL,
-                                        state->bas);
-            LockBuffer(buffer, BUFFER_LOCK_SHARE);
-            page = BufferGetPage(buffer);
-
-            begin = PageGetContents(page);
-            end = page + ((PageHeader) page)->pd_upper;
-        }
-
-        if (data) {
-            data[i] = *((index_entry *) begin);
-            if (data[i].sent_id == 0) {
-                elog(NOTICE, "token=%d: data[%d]=%lu", token, i, (sentid_t) data[i].sent_id);
+            if (data) {
+                data[i] = *((index_entry *) begin);
+                if (data[i].sent_id == 0)
+                    elog(NOTICE, "token=%d: data[%d]=%lu", token, i, (sentid_t) data[i].sent_id);
             }
+
+            begin += sizeof(index_entry);
         }
 
-        begin += sizeof(index_entry);
+        UnlockReleaseBuffer(buffer);
     }
 
-    UnlockReleaseBuffer(buffer);
+    // Append any pending entries for this token
+    int pending_added = 0;
+    for (int p = 0; p < state->n_pending; p++) {
+        if (state->pending[p].token != token)
+            continue;
+        if (data && num_elems + pending_added < num_entries)
+            data[num_elems + pending_added] = state->pending[p].entry;
+        pending_added++;
+    }
 
-    return num_elems;
+    return num_elems + pending_added;
 }
 
 /* fetch all valid tuples */
@@ -153,10 +163,53 @@ int64 ibpe_getbitmap(IndexScanDesc scan, TIDBitmap *tbm)
     // run the actual search
     BufferAccessStrategy bas = GetAccessStrategy(BAS_BULKREAD);
 
+    // Load all pending entries into a flat array for this scan
+    ibpe_pending_entry *pending_arr = NULL;
+    int n_pending = 0;
+
+    Buffer meta_buf = ReadBuffer(scan->indexRelation, 0 /* metapage */);
+    LockBuffer(meta_buf, BUFFER_LOCK_SHARE);
+    ibpe_metapage_data *meta = (ibpe_metapage_data *) PageGetContents(BufferGetPage(meta_buf));
+    BlockNumber pending_blkno = meta->pending_blkno;
+    int pending_total = meta->n_pending;
+    UnlockReleaseBuffer(meta_buf);
+
+    if (pending_blkno != InvalidBlockNumber && pending_total > 0) {
+        pending_arr = palloc(pending_total * sizeof(ibpe_pending_entry));
+
+        BlockNumber blkno = pending_blkno;
+        while (blkno != InvalidBlockNumber) {
+            Buffer buf = ReadBufferExtended(scan->indexRelation,
+                                            MAIN_FORKNUM,
+                                            blkno,
+                                            RBM_NORMAL,
+                                            bas);
+            LockBuffer(buf, BUFFER_LOCK_SHARE);
+            Page page = BufferGetPage(buf);
+            ibpe_opaque_data *opaque = ibpe_get_opaque(page);
+
+            Assert((opaque->flags & IBPE_PAGE_PENDING) != 0);
+
+            char *p = PageGetContents(page);
+            char *end = p + opaque->data_len;
+            while (p + sizeof(ibpe_pending_entry) <= end) {
+                if (n_pending < pending_total)
+                    pending_arr[n_pending++] = *((ibpe_pending_entry *) p);
+                p += sizeof(ibpe_pending_entry);
+            }
+
+            blkno = opaque->next_blkno;
+            UnlockReleaseBuffer(buf);
+        }
+        elog(NOTICE, "ibpe_getbitmap: loaded %d pending entries", n_pending);
+    }
+
     ibpe_access_index_state access_state = {
         .indexRelation = scan->indexRelation,
         .cache = cache,
         .bas = bas,
+        .pending = pending_arr,
+        .n_pending = n_pending,
     };
 
     index_accessor_cb callback = {

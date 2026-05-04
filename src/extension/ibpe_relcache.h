@@ -23,6 +23,10 @@ typedef struct
 
     int vocab_size;
     ibpe_ptr_record *token_sid_map;
+
+    // pending list state (updated by ibpe_insert)
+    BlockNumber pending_head_blkno; // InvalidBlockNumber if no pending pages yet
+    BlockNumber pending_tail_blkno; // last pending page (to avoid re-walking on insert)
 } ibpe_relcache;
 
 void ibpe_store_cache(Relation indexRelation, ibpe_relcache *cur_state);

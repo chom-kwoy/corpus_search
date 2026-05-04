@@ -159,6 +159,10 @@ static ibpe_relcache *ibpe_relcache_fill(Relation indexRelation, ibpe_metapage_d
     cb->arg = cache;
     MemoryContextRegisterResetCallback(indexRelation->rd_indexcxt, cb);
 
+    // Initialize pending list pointers
+    cache->pending_head_blkno = meta->pending_blkno;
+    cache->pending_tail_blkno = InvalidBlockNumber; // resolved lazily on first insert
+
     // Load index if already built
     ibpe_relcache_reload_index(cache, indexRelation, meta);
 

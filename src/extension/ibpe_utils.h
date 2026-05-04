@@ -7,6 +7,8 @@
 #include <fmgr.h>
 #include <storage/bufpage.h>
 
+#include "ibpe_backend.h"
+
 #define IBPE_STRATEGY_REGEX 1
 
 typedef struct
@@ -30,6 +32,7 @@ typedef struct __attribute__((packed))
 #define IBPE_PAGE_DELETED (1 << 1)
 #define IBPE_PAGE_PTR (1 << 2) // containing pageid and offset for each token
 #define IBPE_PAGE_SID (1 << 3) // containing sentence ids
+#define IBPE_PAGE_PENDING (1 << 4) // pending inserts not yet merged into main index
 
 #define IBPE_PAGE_ID (0x1B9E)
 
@@ -44,9 +47,18 @@ typedef struct
     char normalize_mappings[NORMALIZE_MAPPINGS_MAXLEN][2];
     bool index_built;
     int num_indexed_tokens;
+    BlockNumber pending_blkno; // head of pending page chain; InvalidBlockNumber if none
+    int n_pending;             // total pending entries across all pending pages
 } ibpe_metapage_data;
 
 #define IBPE_MAGICK_NUMBER (0xFEEDBEEF)
+
+// one record in the pending page chain
+typedef struct
+{
+    int token;
+    index_entry entry;
+} ibpe_pending_entry;
 
 // page related utils
 ibpe_opaque_data *ibpe_get_opaque(Page page);

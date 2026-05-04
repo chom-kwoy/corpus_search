@@ -48,6 +48,8 @@ static void ibpe_fill_metapage(Relation indexRelation, Page metaPage)
     }
     metadata->index_built = false;
     metadata->num_indexed_tokens = 0;
+    metadata->pending_blkno = InvalidBlockNumber;
+    metadata->n_pending = 0;
 
     ((PageHeader) metaPage)->pd_lower += sizeof(ibpe_metapage_data);
     Assert(((PageHeader) metaPage)->pd_lower <= ((PageHeader) metaPage)->pd_upper);
@@ -513,6 +515,29 @@ void ibpe_buildempty(Relation indexRelation)
     ibpe_restore_or_create_cache(indexRelation);
 }
 
+/*
+ * Link a freshly flushed page into the pending chain.
+ * Updates cache->pending_head_blkno / pending_tail_blkno.
+ */
+static void ibpe_pending_link(Relation indexRelation,
+                              ibpe_relcache *cache,
+                              BlockNumber new_blkno)
+{
+    if (cache->pending_tail_blkno != InvalidBlockNumber) {
+        Buffer prev_buf = ReadBuffer(indexRelation, cache->pending_tail_blkno);
+        LockBuffer(prev_buf, BUFFER_LOCK_EXCLUSIVE);
+
+        GenericXLogState *state = GenericXLogStart(indexRelation);
+        Page prev_page = GenericXLogRegisterBuffer(state, prev_buf, GENERIC_XLOG_FULL_IMAGE);
+        ibpe_get_opaque(prev_page)->next_blkno = new_blkno;
+        GenericXLogFinish(state);
+        UnlockReleaseBuffer(prev_buf);
+    } else {
+        cache->pending_head_blkno = new_blkno;
+    }
+    cache->pending_tail_blkno = new_blkno;
+}
+
 /* insert this tuple */
 bool ibpe_insert(Relation indexRelation,
                  Datum *values,
@@ -523,7 +548,104 @@ bool ibpe_insert(Relation indexRelation,
                  bool indexUnchanged,
                  IndexInfo *indexInfo)
 {
-    // TODO
-    elog(ERROR, "ibpe_insert: Not implemented");
+    if (isnull[0])
+        return false;
+
+    ibpe_relcache *cache = ibpe_restore_or_create_cache(indexRelation);
+
+    char *string = TextDatumGetCString(values[0]);
+
+    int bufsz = 256;
+    int *tokens = palloc0(bufsz * sizeof(int));
+    int n_tokens = tokenizer_tokenize(cache->tok, string, tokens, bufsz);
+    if (n_tokens > bufsz) {
+        pfree(tokens);
+        tokens = palloc0(n_tokens * sizeof(int));
+        tokenizer_tokenize(cache->tok, string, tokens, n_tokens);
+    }
+
+    if (n_tokens == 0) {
+        pfree(tokens);
+        return false;
+    }
+
+    sentid_t sent_id = 0;
+    sent_id |= ((sentid_t) heap_tid->ip_blkid.bi_hi << 32);
+    sent_id |= ((sentid_t) heap_tid->ip_blkid.bi_lo << 16);
+    sent_id |= (sentid_t) heap_tid->ip_posid;
+
+    /*
+     * Resolve the tail of the pending chain if this is the first insert in
+     * the current session. pending_tail_blkno is set to InvalidBlockNumber by
+     * ibpe_relcache_fill, so it is unknown (not "no chain") whenever
+     * pending_head_blkno is valid.
+     */
+    if (cache->pending_head_blkno != InvalidBlockNumber
+        && cache->pending_tail_blkno == InvalidBlockNumber)
+    {
+        BlockNumber blkno = cache->pending_head_blkno;
+        for (;;) {
+            Buffer buf = ReadBuffer(indexRelation, blkno);
+            LockBuffer(buf, BUFFER_LOCK_SHARE);
+            Page page = BufferGetPage(buf);
+            BlockNumber next = ibpe_get_opaque(page)->next_blkno;
+            UnlockReleaseBuffer(buf);
+            if (next == InvalidBlockNumber) {
+                cache->pending_tail_blkno = blkno;
+                break;
+            }
+            blkno = next;
+        }
+    }
+
+    /*
+     * Write one ibpe_pending_entry per token.  We stage records into an
+     * in-memory page and flush it to a new block when full.  Each new block
+     * is appended to the pending chain via ibpe_pending_link().
+     *
+     * We always allocate fresh pages rather than modifying the existing tail
+     * in-place, which keeps the write path simple at the cost of leaving some
+     * unused space on the previous tail page.
+     */
+    PGAlignedBlock staging;
+    ibpe_init_page(staging.data, IBPE_PAGE_PENDING);
+    int n_written = 0;
+
+    for (int i = 0; i < n_tokens; i++) {
+        ibpe_pending_entry rec = {
+            .token = tokens[i],
+            .entry = {.sent_id = sent_id, .pos = (tokpos_t) i},
+        };
+
+        if (!ibpe_add_record_to_page(staging.data, (char *) &rec, sizeof(rec), NULL)) {
+            BlockNumber new_blkno = ibpe_flush_page(indexRelation, staging.data);
+            ibpe_pending_link(indexRelation, cache, new_blkno);
+
+            ibpe_init_page(staging.data, IBPE_PAGE_PENDING);
+            if (!ibpe_add_record_to_page(staging.data, (char *) &rec, sizeof(rec), NULL))
+                elog(ERROR, "ibpe_insert: could not add pending entry to empty page");
+        }
+        n_written++;
+    }
+
+    // Flush the final staging page
+    BlockNumber final_blkno = ibpe_flush_page(indexRelation, staging.data);
+    ibpe_pending_link(indexRelation, cache, final_blkno);
+
+    // Update metapage
+    Buffer meta_buf = ReadBuffer(indexRelation, 0 /* metapage */);
+    LockBuffer(meta_buf, BUFFER_LOCK_EXCLUSIVE);
+
+    GenericXLogState *state = GenericXLogStart(indexRelation);
+    Page meta_page = GenericXLogRegisterBuffer(state, meta_buf, GENERIC_XLOG_FULL_IMAGE);
+
+    ibpe_metapage_data *meta = (ibpe_metapage_data *) PageGetContents(meta_page);
+    meta->pending_blkno = cache->pending_head_blkno;
+    meta->n_pending += n_written;
+
+    GenericXLogFinish(state);
+    UnlockReleaseBuffer(meta_buf);
+
+    pfree(tokens);
     return false;
 }
