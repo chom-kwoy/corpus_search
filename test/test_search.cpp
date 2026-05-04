@@ -132,6 +132,11 @@ TEST_F(Searcher, SearchRegexHard4)
     EXPECT_EQ(measure_time("[a-zA-Z. ]{4}pskuy").size(), 771);
 }
 
+TEST_F(Searcher, SearchRegexUnicode)
+{
+    EXPECT_EQ(measure_time("\\p{Script=Han}`i").size(), 61263);
+}
+
 TEST_F(Searcher, SearchRegexInfinite)
 {
     EXPECT_EQ(measure_time(".*abc").size(), 0);

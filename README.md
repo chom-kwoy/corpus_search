@@ -32,6 +32,9 @@ SET enable_seqscan = off; explain analyze select text from sentences where text 
 -- without index
 SET max_parallel_workers_per_gather = 0; SET enable_seqscan = on; SET enable_bitmapscan = off; explain analyze select text from sentences where text ~ '[一-鿌㐀-䶵]`i';
 
+SET enable_seqscan = off; explain analyze select text from sentences where text ~ '\p{Script=Han}`i';
+
+
 drop extension corpussearch cascade;
 ```
 
