@@ -22,6 +22,7 @@ struct mark_state
 {
     int cur_pos = 0;
     int cur_index = 0;
+    bool has_assertion = false;
 
     // node index -> positions
     std::map<int, node_table> nodes{};
@@ -40,6 +41,9 @@ struct mark_state
                 if constexpr (std::is_same_v<T, ast::node_empty>) {
                     // Assertions (^, $, \b, \B) are treated as ε.
                     // The DFA over-approximates; needs_recheck=true handles correctness.
+                    if (node.assertion != ast::assertion_kind::none) {
+                        has_assertion = true;
+                    }
                     return {{}, {}, true};
                 } else if constexpr (std::is_same_v<T, ast::node_range>) {
                     cur_pos++;
@@ -136,6 +140,7 @@ static auto merge_identical_states(sm::graph dfa) -> sm::graph
         sm::graph result;
         result.start_state = old_to_new_state.at(dfa.start_state);
         result.num_states = unique_states.size();
+        result.needs_recheck = dfa.needs_recheck;
         for (int state : dfa.accept_states) {
             result.accept_states.insert(old_to_new_state.at(state));
         }
@@ -280,6 +285,8 @@ auto ast_to_dfa(ast::node const& node) -> sm::graph
     }
 
     assert(result.accept_states.size() > 0);
+
+    result.needs_recheck = visit_state.has_assertion;
 
     return merge_identical_states(std::move(result));
 }

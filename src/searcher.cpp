@@ -226,7 +226,7 @@ auto search(tokenizer const &tok,
     }
 
     auto cand_lists = std::vector<std::vector<token_range>>{};
-    bool needs_recheck = false;
+    bool needs_recheck = dfa.needs_recheck;
 
     std::unordered_map<int, cand_result> cache;
     std::set<int> visited_states = {dfa.start_state};

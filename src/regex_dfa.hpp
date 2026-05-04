@@ -28,6 +28,7 @@ struct graph
     int start_state;
     std::set<int> accept_states;
     int num_states = 0;
+    bool needs_recheck = false;
 
     auto next_state(int state, char ch) const -> int;
     auto match(std::string_view str) const -> bool;
