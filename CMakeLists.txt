@@ -48,6 +48,7 @@ target_include_directories(lib_corpus_search INTERFACE "${CMAKE_CURRENT_SOURCE_D
 target_compile_definitions(lib_corpus_search PUBLIC
     CORPUS_SEARCH_INDEX_ENTRY_BITS=64
     CORPUS_SEARCH_POSITION_BITS=12
+    CORPUS_SEARCH_NEXT_TOKEN_BITS=12
 )
 
 

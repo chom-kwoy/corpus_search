@@ -4,6 +4,7 @@
 #include <access/relscan.h>
 #include <miscadmin.h>
 #include <pgstat.h>
+#include <stdlib.h>
 #include <storage/bufmgr.h>
 #include <utils/builtins.h>
 
@@ -46,20 +47,55 @@ typedef struct
     int n_pending;
 } ibpe_access_index_state;
 
+static int ibpe_cmp_index_entry(const void *a, const void *b)
+{
+    const index_entry *ea = (const index_entry *) a;
+    const index_entry *eb = (const index_entry *) b;
+    if (ea->sent_id < eb->sent_id)
+        return -1;
+    if (ea->sent_id > eb->sent_id)
+        return 1;
+    if (ea->pos < eb->pos)
+        return -1;
+    if (ea->pos > eb->pos)
+        return 1;
+    return 0;
+}
+
 static int ibpe_access_index(void *user_data, int token, index_entry *data, int num_entries)
 {
     ibpe_access_index_state *state = user_data;
-
-    int num_elems = 0;
 
     if (state->cache->vocab_size > 0 && state->cache->token_sid_map != NULL) {
         if (token < 0 || token >= state->cache->vocab_size)
             elog(ERROR, "ibpe_access_index: token %d out of range", token);
     }
 
+    // Collect and sort pending entries for this token up front
+    int pending_count = 0;
+    for (int p = 0; p < state->n_pending; p++) {
+        if (state->pending[p].token == token)
+            pending_count++;
+    }
+
+    index_entry *pending_sorted = NULL;
+    if (pending_count > 0) {
+        pending_sorted = palloc(pending_count * sizeof(index_entry));
+        int j = 0;
+        for (int p = 0; p < state->n_pending; p++) {
+            if (state->pending[p].token == token)
+                pending_sorted[j++] = state->pending[p].entry;
+        }
+        qsort(pending_sorted, pending_count, sizeof(index_entry), ibpe_cmp_index_entry);
+    }
+
     ibpe_ptr_record ptr = (state->cache->vocab_size > 0 && state->cache->token_sid_map != NULL)
                               ? state->cache->token_sid_map[token]
-                              : (ibpe_ptr_record){.token = token, .blkno = InvalidBlockNumber, .offset = -1};
+                              : (ibpe_ptr_record){.token = token,
+                                                  .blkno = InvalidBlockNumber,
+                                                  .offset = -1};
+
+    int num_main = 0;
 
     if (ptr.blkno != InvalidBlockNumber) {
         Buffer buffer = ReadBufferExtended(state->indexRelation,
@@ -73,60 +109,69 @@ static int ibpe_access_index(void *user_data, int token, index_entry *data, int 
         char const *begin = PageGetContents(page) + ptr.offset;
         char const *end = page + ((PageHeader) page)->pd_upper;
 
-        num_elems = *((int *) begin);
+        num_main = *((int *) begin);
         begin += sizeof(int);
 
-        for (int i = 0; i < num_elems; ++i) {
-            if (i >= num_entries)
-                break;
+        if (data) {
+            int pi = 0;
+            int out = 0;
 
-            if (begin + sizeof(index_entry) > end) {
-                int next_blkno = ibpe_get_opaque(page)->next_blkno;
-                if (next_blkno == InvalidBlockNumber)
-                    elog(ERROR,
-                         "ibpe_access_index: unexpected end of pages when reading #%d out of %d "
-                         "entries for token %d",
-                         i,
-                         num_entries,
-                         token);
+            for (int i = 0; i < num_main; i++) {
+                if (begin + sizeof(index_entry) > end) {
+                    int next_blkno = ibpe_get_opaque(page)->next_blkno;
+                    if (next_blkno == InvalidBlockNumber) {
+                        elog(ERROR,
+                             "ibpe_access_index: unexpected end of pages when reading #%d out of "
+                             "%d entries for token %d",
+                             i,
+                             num_main,
+                             token);
+                    }
 
-                UnlockReleaseBuffer(buffer);
+                    UnlockReleaseBuffer(buffer);
+                    buffer = ReadBufferExtended(state->indexRelation,
+                                                MAIN_FORKNUM,
+                                                next_blkno,
+                                                RBM_NORMAL,
+                                                state->bas);
+                    LockBuffer(buffer, BUFFER_LOCK_SHARE);
+                    page = BufferGetPage(buffer);
+                    begin = PageGetContents(page);
+                    end = page + ((PageHeader) page)->pd_upper;
+                }
 
-                buffer = ReadBufferExtended(state->indexRelation,
-                                            MAIN_FORKNUM,
-                                            next_blkno,
-                                            RBM_NORMAL,
-                                            state->bas);
-                LockBuffer(buffer, BUFFER_LOCK_SHARE);
-                page = BufferGetPage(buffer);
+                index_entry main_entry = *((index_entry *) begin);
+                begin += sizeof(index_entry);
 
-                begin = PageGetContents(page);
-                end = page + ((PageHeader) page)->pd_upper;
+                // Drain pending entries that sort before this main entry
+                while (pi < pending_count
+                       && ibpe_cmp_index_entry(&pending_sorted[pi], &main_entry) <= 0) {
+                    data[out++] = pending_sorted[pi++];
+                }
+
+                if (main_entry.sent_id == 0) {
+                    elog(NOTICE, "token=%d: data[%d]=%lu", token, out, (sentid_t) main_entry.sent_id);
+                }
+                data[out++] = main_entry;
             }
 
-            if (data) {
-                data[i] = *((index_entry *) begin);
-                if (data[i].sent_id == 0)
-                    elog(NOTICE, "token=%d: data[%d]=%lu", token, i, (sentid_t) data[i].sent_id);
+            // Drain remaining pending entries after all main entries
+            while (pi < pending_count) {
+                data[out++] = pending_sorted[pi++];
             }
-
-            begin += sizeof(index_entry);
         }
 
         UnlockReleaseBuffer(buffer);
+    } else if (data) {
+        // No main index entries; copy sorted pending directly
+        for (int i = 0; i < pending_count; i++)
+            data[i] = pending_sorted[i];
     }
 
-    // Append any pending entries for this token
-    int pending_added = 0;
-    for (int p = 0; p < state->n_pending; p++) {
-        if (state->pending[p].token != token)
-            continue;
-        if (data && num_elems + pending_added < num_entries)
-            data[num_elems + pending_added] = state->pending[p].entry;
-        pending_added++;
-    }
+    if (pending_sorted)
+        pfree(pending_sorted);
 
-    return num_elems + pending_added;
+    return num_main + pending_count;
 }
 
 /* fetch all valid tuples */

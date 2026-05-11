@@ -121,8 +121,12 @@ void index_builder::add_sentence(sentid_t sent_id, std::span<const int> tokens)
             throw std::runtime_error(fmt::format("Invalid token pos {}.", pos));
         }
         result[token].push_back({
-            sent_id,
-            static_cast<tokpos_t>(pos),
+            sent_id, static_cast<tokpos_t>(pos),
+#if CORPUS_SEARCH_NEXT_TOKEN_BITS > 0
+                (pos + 1 < (int) tokens.size())
+                    ? static_cast<int>(tokens[pos + 1] & index_entry::MAX_NEXT_TOK)
+                    : 0,
+#endif
         });
         pos += 1;
     }

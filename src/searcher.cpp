@@ -28,8 +28,8 @@ auto get_sent_ids(std::span<const token_range> self) -> std::vector<sentid_t>
     return output;
 }
 
-auto followed_by(std::span<const token_range> arr1,
-                 std::span<const token_range> arr2) -> std::vector<token_range>
+auto followed_by(std::span<const token_range> arr1, std::span<const token_range> arr2)
+    -> std::vector<token_range>
 {
     std::vector<token_range> result;
 

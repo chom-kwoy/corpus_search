@@ -51,8 +51,8 @@ public:
     auto inv_normalize_mapping() const -> auto const & { return m_inv_normalize_mapping; }
     auto trie() const -> auto const & { return *m_trie; }
 
-    auto tokenize(std::string_view string,
-                  bool add_special_tokens = false) const -> std::vector<int>;
+    auto tokenize(std::string_view string, bool add_special_tokens = false) const
+        -> std::vector<int>;
 };
 
 auto to_bytes(std::string_view s) -> std::string;

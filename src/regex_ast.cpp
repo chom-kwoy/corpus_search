@@ -160,9 +160,8 @@ static auto make_last(std::string_view smax) -> ast::node
     return {result};
 }
 
-static auto utf8_range_n(std::string_view smin,
-                         std::string_view smax,
-                         int n) -> std::vector<ast::node>
+static auto utf8_range_n(std::string_view smin, std::string_view smax, int n)
+    -> std::vector<ast::node>
 {
     std::vector<ast::node> result;
 

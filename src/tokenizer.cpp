@@ -31,8 +31,8 @@ static auto load_json_file(std::string const &path) -> nlohmann::json
     return nlohmann::json::parse((std::stringstream{} << file.rdbuf()).str());
 }
 
-static auto replace_chars(std::string_view string,
-                          std::unordered_map<char, char> const &mapping) -> std::string
+static auto replace_chars(std::string_view string, std::unordered_map<char, char> const &mapping)
+    -> std::string
 {
     auto new_string = std::string(string);
     for (int i = 0; i < string.size(); ++i) {

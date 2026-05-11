@@ -20,9 +20,13 @@ typedef struct __attribute__((__may_alias__))
     enum {
         POS_BITS = CORPUS_SEARCH_POSITION_BITS,
         SENTID_BITS = CORPUS_SEARCH_SENTID_BITS,
+        NEXT_TOK_BITS = CORPUS_SEARCH_NEXT_TOKEN_BITS,
     };
     sentid_t sent_id : SENTID_BITS;
     tokpos_t pos : POS_BITS;
+#if CORPUS_SEARCH_NEXT_TOKEN_BITS > 0
+    int next_tok : NEXT_TOK_BITS;
+#endif
 } index_entry;
 
 typedef void (*index_builder_iterate_function)(void *user_data,

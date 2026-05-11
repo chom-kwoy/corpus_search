@@ -100,8 +100,8 @@ static auto call_tokenize(const void* user_data,
     return result.size();
 }
 
-static auto load_llg_tokenizer(corpus_search::tokenizer const& tok,
-                               nlohmann::json json) -> LlgTokenizer*
+static auto load_llg_tokenizer(corpus_search::tokenizer const& tok, nlohmann::json json)
+    -> LlgTokenizer*
 {
     // replace vocab with unnormalized tokens
     auto& vocab = json["model"]["vocab"];
@@ -318,7 +318,7 @@ TEST(Regex, UnicodeProperty)
     test_parse("\\p{L}",
                {
                    {"a", true},
-                   {"\xED\x95\x9C", true},  // 한 (U+D55C, Korean letter)
+                   {"\xED\x95\x9C", true}, // 한 (U+D55C, Korean letter)
                    {"1", false},
                    {" ", false},
                    {".", false},
@@ -328,7 +328,7 @@ TEST(Regex, UnicodeProperty)
     test_parse("\\p{Lu}",
                {
                    {"A", true},
-                   {"\xCE\xA9", true},  // Ω (U+03A9, Greek capital letter Omega)
+                   {"\xCE\xA9", true}, // Ω (U+03A9, Greek capital letter Omega)
                    {"a", false},
                    {"1", false},
                });
@@ -336,17 +336,14 @@ TEST(Regex, UnicodeProperty)
     // Negated: non-letter (\P{L})
     test_parse("\\P{L}",
                {
-                   {"1", true},
-                   {".", true},
-                   {"a", false},
-                   {"\xED\x95\x9C", false},  // 한
+                   {"1", true}, {".", true}, {"a", false}, {"\xED\x95\x9C", false}, // 한
                });
 
     // Script property: Han
     test_parse("\\p{Script=Han}",
                {
-                   {"\xE6\xB1\x89", true},  // 汉 (U+6C49)
-                   {"\xE8\xAA\x9E", true},  // 語 (U+8A9E)
+                   {"\xE6\xB1\x89", true}, // 汉 (U+6C49)
+                   {"\xE8\xAA\x9E", true}, // 語 (U+8A9E)
                    {"a", false},
                    {"1", false},
                });

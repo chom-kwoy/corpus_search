@@ -103,9 +103,8 @@ auto dfa_trie::get_next_tids(regex::sm::graph const& dfa,
     return result;
 }
 
-auto dfa_trie::consume_token(regex::sm::graph const& dfa,
-                             int state,
-                             std::string_view token) const -> int
+auto dfa_trie::consume_token(regex::sm::graph const& dfa, int state, std::string_view token) const
+    -> int
 {
     for (char ch : token) {
         state = dfa.next_state(state, ch);

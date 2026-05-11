@@ -24,9 +24,10 @@ static auto measure_time(std::string search_term) -> std::vector<sentid_t>
         result.reserve(vec.size());
         for (auto const& entry : vec) {
             result.push_back({
-                entry.sent_id,
-                entry.pos,
-                static_cast<tokpos_t>(entry.pos + 1),
+                entry.sent_id, entry.pos, static_cast<tokpos_t>(entry.pos + 1),
+#if CORPUS_SEARCH_NEXT_TOKEN_BITS > 0
+                    entry.next_tok,
+#endif
             });
         }
         return result;

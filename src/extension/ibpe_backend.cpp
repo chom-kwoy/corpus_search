@@ -126,12 +126,12 @@ auto corpus_search::backend::search_corpus(tokenizer tok,
                               num_entries);
 
                 auto result = std::vector<corpus_search::token_range>(num_entries);
-                result.reserve(vec.size());
                 for (auto const &entry : vec) {
-                    result.push_back(corpus_search::token_range{
-                        entry.sent_id,
-                        entry.pos,
-                        static_cast<tokpos_t>(entry.pos + 1),
+                    result.push_back(corpus_search::token_range {
+                        entry.sent_id, entry.pos, static_cast<tokpos_t>(entry.pos + 1),
+#if CORPUS_SEARCH_NEXT_TOKEN_BITS > 0
+                            entry.next_tok,
+#endif
                     });
                 }
                 return result;

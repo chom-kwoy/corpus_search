@@ -62,11 +62,8 @@ auto any_to_variant_cast(std::any a) -> T
 }
 
 template<typename It, typename ReturnT, typename Arg0, typename... ArgsT, std::size_t... Is>
-auto invoke_(ReturnT (*func)(Arg0, ArgsT...),
-             std::index_sequence<Is...>,
-             It begin,
-             It end,
-             Arg0 arg0) -> ReturnT
+auto invoke_(ReturnT (*func)(Arg0, ArgsT...), std::index_sequence<Is...>, It begin, It end, Arg0 arg0)
+    -> ReturnT
 {
     constexpr bool is_vector_arg = [] {
         if constexpr (sizeof...(ArgsT) == 1) {

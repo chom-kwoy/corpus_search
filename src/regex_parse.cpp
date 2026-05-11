@@ -61,7 +61,8 @@ struct pattern : pegtl::seq<pegtl::list<alternative, u8::one<U'|'>>, pegtl::eolf
 
 struct alternative : pegtl::plus<element>
 {
-    static auto apply(pegtl::parse_tree::node* node, std::vector<std::any> args) -> cst::alternative;
+    static auto apply(pegtl::parse_tree::node* node, std::vector<std::any> args)
+        -> cst::alternative;
 };
 
 struct element : pegtl::sor<assertion, quantifier, quantifiable_element>
@@ -87,8 +88,8 @@ struct capturing_group
                  pegtl::list<alternative, u8::one<U'|'>>,
                  u8::one<U')'>>
 {
-    static auto apply(pegtl::parse_tree::node* node,
-                      std::vector<std::any> args) -> cst::capturing_group;
+    static auto apply(pegtl::parse_tree::node* node, std::vector<std::any> args)
+        -> cst::capturing_group;
 };
 
 struct quantifiable_element
@@ -118,8 +119,8 @@ struct character_class : pegtl::seq<u8::one<U'['>,
                                     pegtl::plus<character_class_element>,
                                     u8::one<U']'>>
 {
-    static auto apply(pegtl::parse_tree::node* node,
-                      std::vector<std::any> args) -> cst::character_class;
+    static auto apply(pegtl::parse_tree::node* node, std::vector<std::any> args)
+        -> cst::character_class;
 };
 
 struct character_class_element : pegtl::sor<escape_character_set,
@@ -137,9 +138,8 @@ struct character_class_element : pegtl::sor<escape_character_set,
 struct character_class_range
     : pegtl::seq<character_inside_brackets, u8::one<U'-'>, character_inside_brackets>
 {
-    static auto apply(pegtl::parse_tree::node* node,
-                      char32_t min,
-                      char32_t max) -> cst::character_class_range;
+    static auto apply(pegtl::parse_tree::node* node, char32_t min, char32_t max)
+        -> cst::character_class_range;
 };
 
 struct assertion : pegtl::sor<edge_assertion, word_boundary_assertion>
@@ -186,8 +186,8 @@ struct unicode_property_character_set : pegtl::seq<u8::one<U'\\'>,
                                                    pegtl::opt<u8::one<U'='>, alphanum>,
                                                    u8::one<U'}'>>
 {
-    static auto apply(pegtl::parse_tree::node* node,
-                      std::vector<std::any> args) -> cst::unicode_property_character_set;
+    static auto apply(pegtl::parse_tree::node* node, std::vector<std::any> args)
+        -> cst::unicode_property_character_set;
 };
 
 #define META_CHARS U'.', U'^', U'$', U'*', U'+', U'?', U'(', U')', U'[', U'{', U'\\', U'|'
@@ -229,8 +229,8 @@ auto pattern::apply(pegtl::parse_tree::node* node, std::vector<std::any> args) -
     return result;
 }
 
-auto alternative::apply(pegtl::parse_tree::node* node,
-                        std::vector<std::any> args) -> cst::alternative
+auto alternative::apply(pegtl::parse_tree::node* node, std::vector<std::any> args)
+    -> cst::alternative
 {
     auto result = cst::alternative{};
     for (auto&& arg : args) {
@@ -255,8 +255,8 @@ auto group::apply(pegtl::parse_tree::node* node, std::vector<std::any> args) -> 
     return result;
 }
 
-auto capturing_group::apply(pegtl::parse_tree::node* node,
-                            std::vector<std::any> args) -> cst::capturing_group
+auto capturing_group::apply(pegtl::parse_tree::node* node, std::vector<std::any> args)
+    -> cst::capturing_group
 {
     auto result = cst::capturing_group{};
     if (node->children.at(1)->string_view() != "") {
@@ -307,8 +307,8 @@ auto quantifier::apply(pegtl::parse_tree::node* node, std::vector<std::any> args
     return result;
 }
 
-auto character_class::apply(pegtl::parse_tree::node* node,
-                            std::vector<std::any> args) -> cst::character_class
+auto character_class::apply(pegtl::parse_tree::node* node, std::vector<std::any> args)
+    -> cst::character_class
 {
     auto result = cst::character_class{};
     result.negate = node->children.at(1)->string_view() == "^";
@@ -327,9 +327,8 @@ auto character_class_element::apply(pegtl::parse_tree::node* node,
     return {arg};
 }
 
-auto character_class_range::apply(pegtl::parse_tree::node* node,
-                                  char32_t min,
-                                  char32_t max) -> cst::character_class_range
+auto character_class_range::apply(pegtl::parse_tree::node* node, char32_t min, char32_t max)
+    -> cst::character_class_range
 {
     if (min > max) {
         throw std::runtime_error("invalid character class range");
@@ -369,7 +368,8 @@ auto word_boundary_assertion::apply(pegtl::parse_tree::node* node) -> cst::word_
 auto character_set::apply(pegtl::parse_tree::node* node,
                           std::variant<cst::any_character_set,
                                        cst::escape_character_set,
-                                       cst::unicode_property_character_set> arg) -> cst::character_set
+                                       cst::unicode_property_character_set> arg)
+    -> cst::character_set
 {
     return {arg};
 }

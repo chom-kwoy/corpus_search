@@ -13,8 +13,8 @@
 
 typedef struct
 {
-    int32 vl_len_;      // varlena header
-    int tokenizer_path; // string option
+    int32 vl_len_;          // varlena header
+    int tokenizer_path;     // string option
     int normalize_mappings; // string option
 } ibpe_options_data;
 
@@ -30,8 +30,8 @@ typedef struct __attribute__((packed))
 // page flags
 #define IBPE_PAGE_META (1 << 0)
 #define IBPE_PAGE_DELETED (1 << 1)
-#define IBPE_PAGE_PTR (1 << 2) // containing pageid and offset for each token
-#define IBPE_PAGE_SID (1 << 3) // containing sentence ids
+#define IBPE_PAGE_PTR (1 << 2)     // containing pageid and offset for each token
+#define IBPE_PAGE_SID (1 << 3)     // containing sentence ids
 #define IBPE_PAGE_PENDING (1 << 4) // pending inserts not yet merged into main index
 
 #define IBPE_PAGE_ID (0x1B9E)
@@ -67,6 +67,15 @@ static inline sentid_t ibpe_tid_to_sentid(ItemPointer tid)
     sid |= ((sentid_t) tid->ip_blkid.bi_hi << 32);
     sid |= ((sentid_t) tid->ip_blkid.bi_lo << 16);
     sid |= (sentid_t) tid->ip_posid;
+    if (sid > CORPUS_SEARCH_MAX_SENTID) {
+        elog(ERROR,
+             "ibpe: heap TID (%u,%u,%u) exceeds SENTID_BITS=%d capacity; "
+             "the indexed table is too large",
+             (unsigned) tid->ip_blkid.bi_hi,
+             (unsigned) tid->ip_blkid.bi_lo,
+             (unsigned) tid->ip_posid,
+             CORPUS_SEARCH_SENTID_BITS);
+    }
     return sid;
 }
 

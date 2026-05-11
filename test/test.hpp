@@ -14,7 +14,7 @@ inline auto get_tok_path() -> const char*
     return tokenizer_file;
 }
 
-inline auto get_tok() -> corpus_search::tokenizer &
+inline auto get_tok() -> corpus_search::tokenizer&
 {
     static auto t = corpus_search::tokenizer{
         get_tok_path(),
@@ -24,7 +24,7 @@ inline auto get_tok() -> corpus_search::tokenizer &
     return t;
 }
 
-inline auto get_index() -> corpus_search::index_builder &
+inline auto get_index() -> corpus_search::index_builder&
 {
     const char* corpus_file = std::getenv("IBPE_TEST_CORPUS_FILE");
     if (corpus_file == nullptr) {

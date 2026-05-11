@@ -22,8 +22,9 @@ IndexBulkDeleteResult *ibpe_bulkdelete(IndexVacuumInfo *info,
 {
     Relation index = info->index;
 
-    if (stats == NULL)
+    if (stats == NULL) {
         stats = palloc0_object(IndexBulkDeleteResult);
+    }
 
     /*
      * Load pending chain info from metapage.  Dead entries in the main bulk
@@ -46,11 +47,7 @@ IndexBulkDeleteResult *ibpe_bulkdelete(IndexVacuumInfo *info,
         while (blkno != InvalidBlockNumber) {
             vacuum_delay_point(false);
 
-            Buffer buf = ReadBufferExtended(index,
-                                            MAIN_FORKNUM,
-                                            blkno,
-                                            RBM_NORMAL,
-                                            info->strategy);
+            Buffer buf = ReadBufferExtended(index, MAIN_FORKNUM, blkno, RBM_NORMAL, info->strategy);
             LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
             Page page = BufferGetPage(buf);
             ibpe_opaque_data *opaque = ibpe_get_opaque(page);
@@ -85,9 +82,7 @@ IndexBulkDeleteResult *ibpe_bulkdelete(IndexVacuumInfo *info,
                  * even if a stale scan loads it.
                  */
                 GenericXLogState *xlog_state = GenericXLogStart(index);
-                Page xlog_page = GenericXLogRegisterBuffer(xlog_state,
-                                                           buf,
-                                                           GENERIC_XLOG_FULL_IMAGE);
+                Page xlog_page = GenericXLogRegisterBuffer(xlog_state, buf, GENERIC_XLOG_FULL_IMAGE);
 
                 char *p = PageGetContents(xlog_page);
                 char *end = p + ibpe_get_opaque(xlog_page)->data_len;
@@ -161,8 +156,9 @@ IndexBulkDeleteResult *ibpe_vacuumcleanup(IndexVacuumInfo *info, IndexBulkDelete
     if (info->analyze_only)
         return stats;
 
-    if (stats == NULL)
+    if (stats == NULL) {
         stats = palloc0_object(IndexBulkDeleteResult);
+    }
 
     /*
 	 * Iterate over the pages: insert deleted pages into FSM and collect

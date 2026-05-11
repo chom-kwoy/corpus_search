@@ -14,6 +14,9 @@ struct token_range
 {
     sentid_t sent_id;
     tokpos_t i, j;
+#if CORPUS_SEARCH_NEXT_TOKEN_BITS > 0
+    int next_tok_hash;
+#endif
 
     bool operator<(token_range const &other) const
     {

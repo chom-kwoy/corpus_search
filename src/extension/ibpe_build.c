@@ -516,9 +516,7 @@ void ibpe_buildempty(Relation indexRelation)
  * Link a freshly flushed page into the pending chain.
  * Updates cache->pending_head_blkno / pending_tail_blkno.
  */
-static void ibpe_pending_link(Relation indexRelation,
-                              ibpe_relcache *cache,
-                              BlockNumber new_blkno)
+static void ibpe_pending_link(Relation indexRelation, ibpe_relcache *cache, BlockNumber new_blkno)
 {
     if (cache->pending_tail_blkno != InvalidBlockNumber) {
         Buffer prev_buf = ReadBuffer(indexRelation, cache->pending_tail_blkno);
@@ -566,6 +564,16 @@ bool ibpe_insert(Relation indexRelation,
         return false;
     }
 
+    if (n_tokens > CORPUS_SEARCH_MAX_POS + 1) {
+        pfree(tokens);
+        elog(
+            ERROR,
+            "ibpe_insert: sentence tokenizes to %d tokens, exceeding POS_BITS=%d capacity (%d max)",
+            n_tokens,
+            CORPUS_SEARCH_POSITION_BITS,
+            CORPUS_SEARCH_MAX_POS);
+    }
+
     sentid_t sent_id = ibpe_tid_to_sentid(heap_tid);
 
     /*
@@ -575,8 +583,7 @@ bool ibpe_insert(Relation indexRelation,
      * pending_head_blkno is valid.
      */
     if (cache->pending_head_blkno != InvalidBlockNumber
-        && cache->pending_tail_blkno == InvalidBlockNumber)
-    {
+        && cache->pending_tail_blkno == InvalidBlockNumber) {
         BlockNumber blkno = cache->pending_head_blkno;
         for (;;) {
             Buffer buf = ReadBuffer(indexRelation, blkno);
@@ -608,7 +615,15 @@ bool ibpe_insert(Relation indexRelation,
     for (int i = 0; i < n_tokens; i++) {
         ibpe_pending_entry rec = {
             .token = tokens[i],
-            .entry = {.sent_id = sent_id, .pos = (tokpos_t) i},
+            .entry = {
+                .sent_id = sent_id,
+                .pos = (tokpos_t) i,
+#if CORPUS_SEARCH_NEXT_TOKEN_BITS > 0
+                .next_tok = (i + 1 < n_tokens)
+                    ? (tokens[i + 1] & ((1 << CORPUS_SEARCH_NEXT_TOKEN_BITS) - 1))
+                    : 0,
+#endif
+            },
         };
 
         if (!ibpe_add_record_to_page(staging.data, (char *) &rec, sizeof(rec), NULL)) {
