@@ -45,7 +45,10 @@ struct index_entry
     {
         return (static_cast<index_entry_hash_t>(sent_id) << (POS_BITS + NEXT_TOK_BITS))
                | (static_cast<index_entry_hash_t>(pos) << NEXT_TOK_BITS)
-               | static_cast<index_entry_hash_t>(next_tok);
+#if CORPUS_SEARCH_NEXT_TOKEN_BITS > 0
+               | static_cast<index_entry_hash_t>(next_tok)
+#endif
+            ;
     }
     static constexpr auto from_hash(index_entry_hash_t hash) -> index_entry
     {
