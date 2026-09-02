@@ -37,17 +37,22 @@ static auto measure_time(std::string search_term) -> std::vector<sentid_t>
     auto end_time = high_resolution_clock::now();
 
     if (result.candidates.size() < 200) {
-        fmt::println("Result for '{}' = Array[{}]{{{}}}",
+        fmt::println(stderr,
+                     "Result for '{}' = Array[{}]{{{}}}",
                      search_term,
                      result.candidates.size(),
                      fmt::join(result.candidates, ", "));
     } else {
-        fmt::println("Result for '{}' = Array[{}]{{...}}", search_term, result.candidates.size());
-        fmt::println("Needs recheck = {}", result.needs_recheck);
+        fmt::println(stderr,
+                     "Result for '{}' = Array[{}]{{...}}",
+                     search_term,
+                     result.candidates.size());
+        fmt::println(stderr, "Needs recheck = {}", result.needs_recheck);
     }
 
     auto elapsed = end_time - start_time;
-    fmt::println("Took {}.", duration_cast<duration<float>>(elapsed));
+    fmt::println("Search for '{}': Took {}.", search_term, duration_cast<duration<float>>(elapsed));
+    std::fflush(stdout);
 
     auto test_info = ::testing::UnitTest::GetInstance()->current_test_info();
     if (test_info != nullptr && std::getenv("IBPE_TEST_WRITE_SEARCH_RESULTS")) {

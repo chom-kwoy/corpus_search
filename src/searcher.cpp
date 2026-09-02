@@ -123,12 +123,13 @@ auto generate_cands(int state,
 
     auto next_tokens = tok.trie().get_next_tids(dfa, state);
 
-    fmt::println("lvl {} (state={}): '{}' (+ {} tokens)",
+    fmt::println(stderr,
+                 "lvl {} (state={}): '{}' (+ {} tokens)",
                  level,
                  state,
                  prev_prefix,
                  next_tokens.cardinality());
-    std::fflush(stdout);
+    std::fflush(stderr);
 
     auto full_cands = std::vector<std::vector<token_range>>{};
     bool needs_recheck = false;
@@ -151,8 +152,8 @@ auto generate_cands(int state,
             full_cands.push_back(std::move(matches));
         } else if (visited_states.contains(new_state)) {
             // infinite recursion detected
-            fmt::println("Warning: infinite recursion detected; aborting..");
-            std::fflush(stdout);
+            fmt::println(stderr, "Warning: infinite recursion detected; aborting..");
+            std::fflush(stderr);
 
             return cache[state] = {std::nullopt, true};
         } else {
@@ -177,9 +178,10 @@ auto generate_cands(int state,
         num_elems += full_cands.back().size();
 
         if (num_elems > CANDS_THRESHOLD) {
-            fmt::println("Warning: more than {} candidate matches generated; aborting..",
+            fmt::println(stderr,
+                         "Warning: more than {} candidate matches generated; aborting..",
                          CANDS_THRESHOLD);
-            std::fflush(stdout);
+            std::fflush(stderr);
 
             return cache[state] = {std::nullopt, true};
         }
@@ -197,25 +199,20 @@ auto search(tokenizer const &tok,
             std::function<index_accessor> const &index,
             std::string const &regex) -> search_result
 {
-    fmt::println("Regex = {}", regex);
+    fmt::println(stderr, "Regex = {}", regex);
 
     auto cst = corpus_search::regex::parse(regex);
-    fmt::println("CST: {}", corpus_search::regex::print_cst(cst));
+    fmt::println(stderr, "CST: {}", corpus_search::regex::print_cst(cst));
 
     auto ast = corpus_search::regex::cst_to_ast(cst);
-    fmt::println("AST: {}", corpus_search::regex::print_ast(ast));
+    fmt::println(stderr, "AST: {}", corpus_search::regex::print_ast(ast));
 
     auto dfa = corpus_search::regex::ast_to_dfa(ast);
-    fmt::println("DFA: start_state={}, accept_states=[{}], num_states={}",
-                 dfa.start_state,
-                 fmt::join(dfa.accept_states, ", "),
-                 dfa.num_states);
-
-    corpus_search::regex::print_dfa(dfa);
+    corpus_search::regex::print_dfa(stderr, dfa);
 
     if (dfa.accept_states.contains(dfa.start_state)) {
         // every string matches
-        fmt::println("DFA accepts empty string; returning all sentence IDs.");
+        fmt::println(stderr, "DFA accepts empty string; returning all sentence IDs.");
         std::vector<sentid_t> output;
         sentid_t last_sent_id = -1;
         for (auto entry : index(tok.BOS_TOKEN_ID)) {
@@ -245,7 +242,7 @@ auto search(tokenizer const &tok,
         }
     }
 
-    fmt::println("lvl {}: '{}' (+ {} tokens)", 0, "", next_tokens.size());
+    fmt::println(stderr, "lvl {}: '{}' (+ {} tokens)", 0, "", next_tokens.size());
 
     int num_elems = 0;
     for (auto [tid, pad] : next_tokens) {
@@ -275,9 +272,10 @@ auto search(tokenizer const &tok,
         num_elems += cand_lists.back().size();
 
         if (num_elems > CANDS_THRESHOLD) {
-            fmt::println("Warning: more than {} candidate matches generated; aborting..",
+            fmt::println(stderr,
+                         "Warning: more than {} candidate matches generated; aborting..",
                          CANDS_THRESHOLD);
-            std::fflush(stdout);
+            std::fflush(stderr);
 
             // return everything
             std::vector<sentid_t> output;
@@ -292,7 +290,7 @@ auto search(tokenizer const &tok,
         }
     }
 
-    std::fflush(stdout);
+    std::fflush(stderr);
 
     return {
         get_sent_ids(merge_sorted_lists(cand_lists)),

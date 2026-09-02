@@ -38,6 +38,7 @@ struct graph
 auto ast_to_dfa(ast::node const& node) -> sm::graph;
 
 void print_dfa(sm::graph const& dfa);
+void print_dfa(FILE* f, sm::graph const& dfa);
 
 } // namespace corpus_search::regex
 

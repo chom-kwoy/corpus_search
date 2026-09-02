@@ -330,7 +330,13 @@ auto sm::graph::match(std::string_view str) const -> bool
 
 void print_dfa(sm::graph const& dfa)
 {
-    fmt::println("DFA: start_state={}, accept_states=[{}], num_states={}",
+    print_dfa(stdout, dfa);
+}
+
+void print_dfa(FILE* f, sm::graph const& dfa)
+{
+    fmt::println(f,
+                 "DFA: start_state={}, accept_states=[{}], num_states={}",
                  dfa.start_state,
                  fmt::join(dfa.accept_states, ", "),
                  dfa.num_states);
@@ -343,9 +349,10 @@ void print_dfa(sm::graph const& dfa)
     };
 
     for (auto&& [state, edges] : dfa.edges) {
-        fmt::println("State {} {}", state, dfa.accept_states.contains(state) ? "(accept)" : "");
+        fmt::println(f, "State {} {}", state, dfa.accept_states.contains(state) ? "(accept)" : "");
         for (auto&& edge : edges) {
-            fmt::println("  [{}-{}] --> State {}",
+            fmt::println(f,
+                         "  [{}-{}] --> State {}",
                          printch(edge.range.min),
                          printch(edge.range.max),
                          edge.target_state);
