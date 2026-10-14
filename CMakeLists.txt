@@ -216,6 +216,7 @@ add_executable(test_corpus_search
     test/test.hpp
     test/test_search.cpp
     test/test_regex.cpp
+    test/test_residue_filter.cpp
 )
 
 ###########################################
