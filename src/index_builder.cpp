@@ -135,9 +135,12 @@ void index_builder::add_sentence(sentid_t sent_id, std::span<const int> tokens)
 
 void index_builder::finalize_index()
 {
+    std::size_t count = 0;
     for (auto &&[tok_id, entries] : result) {
         std::sort(entries.begin(), entries.end());
+        count += entries.size();
     }
+    fmt::println("Avg {} items per token ID.", static_cast<double>(count) / result.size());
 }
 
 auto index_builder::get_index() const -> std::unordered_map<int, std::vector<index_entry>> const &
