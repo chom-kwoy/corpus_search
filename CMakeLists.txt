@@ -41,6 +41,8 @@ add_library(lib_corpus_search
     src/regex_dfa.cpp
     src/dfa_trie.cpp
     src/dfa_trie.hpp
+    src/residue_filter.hpp
+    src/residue_filter.cpp
 )
 set_property(TARGET lib_corpus_search PROPERTY POSITION_INDEPENDENT_CODE ON)
 target_include_directories(lib_corpus_search INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/src/")
@@ -158,7 +160,6 @@ if ((pg_includedir_obtained EQUAL 0) AND (EXISTS "${pg_includedir}"))
         src/extension/ibpe_scan.c
         src/extension/ibpe_backend.h
         src/extension/ibpe_backend.cpp
-        test/test.hpp
         src/extension/ibpe_vacuum.h
         src/extension/ibpe_vacuum.c
     )
@@ -212,6 +213,7 @@ FetchContent_MakeAvailable(googletest)
 enable_testing()
 
 add_executable(test_corpus_search
+    test/test.hpp
     test/test_search.cpp
     test/test_regex.cpp
 )
