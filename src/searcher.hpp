@@ -10,25 +10,25 @@
 
 namespace corpus_search {
 
-struct token_range
+struct token_match
 {
     sentid_t sent_id;
-    tokpos_t i, j;
+    tokpos_t pos;
 #if CORPUS_SEARCH_NEXT_TOKEN_BITS > 0
     int next_tok_hash;
 #endif
 
-    bool operator<(token_range const &other) const
+    bool operator<(token_match const &other) const
     {
-        return std::tie(sent_id, i, j) < std::tie(other.sent_id, other.i, other.j);
+        return std::tie(sent_id, pos) < std::tie(other.sent_id, other.pos);
     }
-    bool operator!=(token_range const &other) const
+    bool operator!=(token_match const &other) const
     {
-        return std::tie(sent_id, i, j) != std::tie(other.sent_id, other.i, other.j);
+        return std::tie(sent_id, pos) != std::tie(other.sent_id, other.pos);
     }
 };
 
-using index_accessor = auto(int token) -> std::vector<token_range>;
+using index_accessor = auto(int token) -> std::vector<token_match>;
 
 struct search_result
 {

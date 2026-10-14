@@ -116,7 +116,7 @@ auto corpus_search::backend::search_corpus(tokenizer tok,
 {
     try {
         auto tok_ptr = reinterpret_cast<corpus_search::tokenizer *>(tok);
-        auto cb = [callback](int token) -> std::vector<corpus_search::token_range> {
+        auto cb = [callback](int token) -> std::vector<corpus_search::token_match> {
             int num_entries = callback.func(callback.user_data, token, nullptr, 0);
             if (num_entries > 0) {
                 auto vec = std::vector<corpus_search::index_entry>(num_entries);
@@ -125,12 +125,13 @@ auto corpus_search::backend::search_corpus(tokenizer tok,
                               reinterpret_cast<index_entry *>(vec.data()),
                               num_entries);
 
-                auto result = std::vector<corpus_search::token_range>(num_entries);
+                auto result = std::vector<corpus_search::token_match>(num_entries);
                 for (auto const &entry : vec) {
-                    result.push_back(corpus_search::token_range {
-                        entry.sent_id, entry.pos, static_cast<tokpos_t>(entry.pos + 1),
+                    result.push_back(corpus_search::token_match{
+                        entry.sent_id,
+                        entry.pos,
 #if CORPUS_SEARCH_NEXT_TOKEN_BITS > 0
-                            entry.next_tok,
+                        entry.next_tok,
 #endif
                     });
                 }

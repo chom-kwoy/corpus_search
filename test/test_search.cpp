@@ -15,7 +15,7 @@ static auto measure_time(std::string search_term) -> std::vector<sentid_t>
     auto start_time = high_resolution_clock::now();
 
     auto index_accessor = [](int token) {
-        std::vector<corpus_search::token_range> result{};
+        std::vector<corpus_search::token_match> result{};
         auto& index = get_index().get_index();
         if (index.count(token) == 0) {
             return result;
@@ -26,7 +26,6 @@ static auto measure_time(std::string search_term) -> std::vector<sentid_t>
             result.push_back({
                 entry.sent_id,
                 entry.pos,
-                static_cast<tokpos_t>(entry.pos + 1),
 #if CORPUS_SEARCH_NEXT_TOKEN_BITS > 0
                 entry.next_tok,
 #endif

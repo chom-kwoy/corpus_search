@@ -15,7 +15,7 @@ namespace corpus_search {
 
 namespace { // static linkage
 
-auto get_sent_ids(std::span<const token_range> self) -> std::vector<sentid_t>
+auto get_sent_ids(std::span<const token_match> self) -> std::vector<sentid_t>
 {
     std::vector<sentid_t> output;
     sentid_t last_sent_id = -1;
@@ -28,10 +28,12 @@ auto get_sent_ids(std::span<const token_range> self) -> std::vector<sentid_t>
     return output;
 }
 
-auto followed_by(std::span<const token_range> arr1, std::span<const token_range> arr2)
-    -> std::vector<token_range>
+// Filter out elements from arr1 that are not followed by arr2
+// i.e., result = A \cap (B - 1)
+auto followed_by(std::span<const token_match> arr1,
+                 std::span<const token_match> arr2) -> std::vector<token_match>
 {
-    std::vector<token_range> result;
+    std::vector<token_match> result;
 
     auto it1 = arr1.begin();
     auto it2 = arr2.begin();
@@ -42,10 +44,10 @@ auto followed_by(std::span<const token_range> arr1, std::span<const token_range>
             ++it1;
         } else {
             if (entry1.sent_id == entry2.sent_id) {
-                if (entry1.j < entry2.i) {
+                if (entry1.pos + 1 < entry2.pos) {
                     ++it1;
-                } else if (entry1.j == entry2.i) {
-                    result.push_back({entry1.sent_id, entry1.i, entry2.j});
+                } else if (entry1.pos + 1 == entry2.pos) {
+                    result.push_back({entry1.sent_id, entry1.pos});
                     ++it1;
                     ++it2;
                 } else {
@@ -60,12 +62,12 @@ auto followed_by(std::span<const token_range> arr1, std::span<const token_range>
     return result;
 }
 
-auto merge_sorted_lists(std::vector<std::vector<token_range>> const &cand_lists)
-    -> std::vector<token_range>
+auto merge_sorted_lists(std::vector<std::vector<token_match>> const &cand_lists)
+    -> std::vector<token_match>
 {
-    auto result = std::vector<token_range>{};
+    auto result = std::vector<token_match>{};
 
-    using queue_item = std::tuple<token_range, int, int>;
+    using queue_item = std::tuple<token_match, int, int>;
     struct comparator
     {
         auto operator()(queue_item const &l, queue_item const &r) -> bool
@@ -104,7 +106,7 @@ constexpr int CANDS_THRESHOLD = 10'000'000;
 
 struct cand_result
 {
-    std::optional<std::vector<token_range>> cands;
+    std::optional<std::vector<token_match>> cands;
     bool needs_recheck;
 };
 
@@ -131,7 +133,7 @@ auto generate_cands(int state,
                  next_tokens.cardinality());
     std::fflush(stderr);
 
-    auto full_cands = std::vector<std::vector<token_range>>{};
+    auto full_cands = std::vector<std::vector<token_match>>{};
     bool needs_recheck = false;
 
     int num_elems = 0;
@@ -224,7 +226,7 @@ auto search(tokenizer const &tok,
         return {output, true};
     }
 
-    auto cand_lists = std::vector<std::vector<token_range>>{};
+    auto cand_lists = std::vector<std::vector<token_match>>{};
     bool needs_recheck = dfa.needs_recheck;
 
     std::unordered_map<int, cand_result> cache;
