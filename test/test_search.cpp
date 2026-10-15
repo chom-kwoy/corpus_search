@@ -21,8 +21,8 @@ static auto measure_time(std::string search_term) -> std::vector<sentid_t>
             return result;
         }
         auto const& vec = index.at(token);
-        result.reserve(vec.size());
-        for (auto const& entry : vec) {
+        result.reserve(vec.entries.size());
+        for (auto const& entry : vec.entries) {
             result.push_back({
                 entry.sent_id,
                 entry.pos,

@@ -59,8 +59,8 @@ void corpus_search::backend::index_builder_iterate(index_builder builder,
         auto const &vec = index.at(token);
 
         // this is normally UB, but allowed because of __may_alias__
-        auto data = reinterpret_cast<index_entry const *>(vec.data());
-        callback(user_data, token, data, vec.size());
+        auto data = reinterpret_cast<index_entry const *>(vec.entries.data());
+        callback(user_data, token, data, vec.entries.size());
     }
 }
 

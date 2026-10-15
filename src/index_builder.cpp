@@ -100,7 +100,7 @@ auto index_builder::from_file(const std::string &tokenized_sentences_path) -> in
 
     int bytes = 0;
     for (auto const &[tok, entries] : index.get_index()) {
-        bytes += sizeof(tok) + entries.size() * sizeof(index_entry);
+        bytes += sizeof(tok) + entries.entries.size() * sizeof(index_entry);
     }
 
     fmt::println("Made index. Index size = {} MB", bytes / 1'000'000);
@@ -120,7 +120,7 @@ void index_builder::add_sentence(sentid_t sent_id, std::span<const int> tokens)
         if (pos > index_entry::MAX_POS) {
             throw std::runtime_error(fmt::format("Invalid token pos {}.", pos));
         }
-        result[token].push_back({
+        result[token].entries.push_back({
             sent_id,
             static_cast<tokpos_t>(pos),
 #if CORPUS_SEARCH_NEXT_TOKEN_BITS > 0
@@ -136,14 +136,14 @@ void index_builder::add_sentence(sentid_t sent_id, std::span<const int> tokens)
 void index_builder::finalize_index()
 {
     std::size_t count = 0;
-    for (auto &&[tok_id, entries] : result) {
-        std::sort(entries.begin(), entries.end());
-        count += entries.size();
+    for (auto &&[tok_id, set] : result) {
+        std::sort(set.entries.begin(), set.entries.end());
+        count += set.entries.size();
     }
     fmt::println("Avg {} items per token ID.", static_cast<double>(count) / result.size());
 }
 
-auto index_builder::get_index() const -> std::unordered_map<int, std::vector<index_entry>> const &
+auto index_builder::get_index() const -> std::unordered_map<int, index_set> const &
 {
     return result;
 }

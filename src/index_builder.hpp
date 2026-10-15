@@ -1,6 +1,7 @@
 #ifndef INDEX_BUILDER_HPP
 #define INDEX_BUILDER_HPP
 
+#include "residue_filter.hpp"
 #include "sizes.h"
 
 #include <span>
@@ -63,9 +64,15 @@ struct index_entry
     }
 };
 
+struct index_set
+{
+    std::vector<index_entry> entries{};
+    default_residue_filter filter{};
+};
+
 class index_builder
 {
-    std::unordered_map<int, std::vector<index_entry>> result = {};
+    std::unordered_map<int, index_set> result = {};
 
 public:
     index_builder() = default;
@@ -73,7 +80,7 @@ public:
 
     void add_sentence(sentid_t sent_id, std::span<const int> tokens);
     void finalize_index();
-    auto get_index() const -> std::unordered_map<int, std::vector<index_entry>> const &;
+    auto get_index() const -> std::unordered_map<int, index_set> const &;
 };
 
 } // namespace corpus_search

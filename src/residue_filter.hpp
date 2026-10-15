@@ -313,6 +313,16 @@ public:
     auto operator==(residue_filter const&) const -> bool = default;
 };
 
+// n=4000, fp=1e-4
+using residue_filter_4k
+    = residue_filter<5857, 5861, 5867, 5869, 5879, 5881, 5897, 5903, 5923, 5927, 5939, 5953, 5981>;
+
+// n=8000, fp=1e-4
+using residue_filter_8k
+    = residue_filter<11743, 11777, 11779, 11783, 11789, 11801, 11807, 11813, 11821, 11827, 11831, 11833, 11839>;
+
+using default_residue_filter = residue_filter_8k;
+
 } // namespace corpus_search
 
 #endif // RESIDUE_FILTER_HPP
