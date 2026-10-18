@@ -28,6 +28,12 @@ auto get_sent_ids(std::span<const token_match> self) -> std::vector<sentid_t>
     return output;
 }
 
+auto get_all_sent_ids(std::function<index_accessor> const &index) -> std::vector<sentid_t>
+{
+    auto matches = index(tokenizer::BOS_TOKEN_ID);
+    return get_sent_ids(matches);
+}
+
 // Filter out elements from arr1 that are not followed by arr2
 // i.e., result = A \cap (B - 1)
 auto followed_by(std::span<const token_match> arr1,
@@ -110,7 +116,19 @@ struct cand_result
     bool needs_recheck;
 };
 
+enum class token_start {
+    boundary,
+    any_byte,
+};
+
+struct token_and_offset
+{
+    int token;
+    int offset;
+};
+
 auto generate_cands(int state,
+                    token_start start,
                     std::set<int> &visited_states,
                     std::string const &prev_prefix, // for debugging only
                     tokenizer const &tok,
@@ -119,28 +137,39 @@ auto generate_cands(int state,
                     std::unordered_map<int, cand_result> &cache,
                     int level = 1) -> cand_result
 {
-    if (cache.contains(state)) {
+    if (start == token_start::boundary && cache.contains(state)) {
         return cache.at(state);
     }
 
-    auto next_tokens = tok.trie().get_next_tids(dfa, state);
+    auto next_tokens = std::vector<token_and_offset>{};
+    if (start == token_start::any_byte) {
+        for (int offset = 0; offset < tok.max_token_bytes(); ++offset) {
+            for (int token : tok.trie().get_next_tids(dfa, state, -1, offset)) {
+                next_tokens.push_back({token, offset});
+            }
+        }
+    } else {
+        for (int token : tok.trie().get_next_tids(dfa, state)) {
+            next_tokens.push_back({token, 0});
+        }
+    }
 
     fmt::println(stderr,
                  "lvl {} (state={}): '{}' (+ {} tokens)",
                  level,
                  state,
                  prev_prefix,
-                 next_tokens.cardinality());
+                 next_tokens.size());
     std::fflush(stderr);
 
     auto full_cands = std::vector<std::vector<token_match>>{};
     bool needs_recheck = false;
 
     int num_elems = 0;
-    for (int token : next_tokens) {
+    for (auto [token, offset] : next_tokens) {
         assert(token != tok.EOS_TOKEN_ID);
 
-        auto token_str = tok.get_tid_to_token().at(token);
+        auto token_str = tok.get_tid_to_token().at(token).substr(offset);
         auto cur_prefix = prev_prefix + token_str;
 
         auto matches = index(token);
@@ -152,7 +181,7 @@ auto generate_cands(int state,
         assert(new_state != dfa_trie::REJECTED);
         if (new_state == dfa_trie::ACCEPTED) {
             full_cands.push_back(std::move(matches));
-        } else if (visited_states.contains(new_state)) {
+        } else if (start == token_start::boundary && visited_states.contains(new_state)) {
             // infinite recursion detected
             fmt::println(stderr, "Warning: infinite recursion detected; aborting..");
             std::fflush(stderr);
@@ -161,6 +190,7 @@ auto generate_cands(int state,
         } else {
             visited_states.insert(new_state);
             auto r = generate_cands(new_state,
+                                    token_start::boundary,
                                     visited_states,
                                     cur_prefix,
                                     tok,
@@ -185,14 +215,20 @@ auto generate_cands(int state,
                          CANDS_THRESHOLD);
             std::fflush(stderr);
 
-            return cache[state] = {std::nullopt, true};
+            if (start == token_start::boundary) {
+                return cache[state] = {std::nullopt, true};
+            }
+            return {std::nullopt, true};
         }
     }
 
     // union the sorted sequences in vec_result
     auto full_result = merge_sorted_lists(full_cands);
 
-    return cache[state] = {full_result, needs_recheck};
+    if (start == token_start::boundary) {
+        return cache[state] = {full_result, needs_recheck};
+    }
+    return {full_result, needs_recheck};
 }
 
 } // namespace
@@ -216,88 +252,31 @@ auto search(tokenizer const &tok,
     if (dfa.accept_states.contains(dfa.start_state)) {
         // every string matches
         fmt::println(stderr, "DFA accepts empty string; returning all sentence IDs.");
-        std::vector<sentid_t> output;
-        sentid_t last_sent_id = -1;
-        for (auto entry : index(tok.BOS_TOKEN_ID)) {
-            if (entry.sent_id != last_sent_id) {
-                output.push_back(entry.sent_id);
-            }
-            last_sent_id = entry.sent_id;
-        }
-        return {output, true};
+        return {get_all_sent_ids(index), true};
     }
-
-    auto cand_lists = std::vector<std::vector<token_match>>{};
-    bool needs_recheck = dfa.needs_recheck;
 
     std::unordered_map<int, cand_result> cache;
     std::set<int> visited_states = {dfa.start_state};
 
-    struct token_and_offset
-    {
-        int token;
-        int pad_size;
-    };
-    auto next_tokens = std::vector<token_and_offset>{};
-    for (int pad = 0; pad < tok.max_token_bytes(); ++pad) {
-        for (int token : tok.trie().get_next_tids(dfa, dfa.start_state, -1, pad)) {
-            next_tokens.push_back({token, pad});
-        }
-    }
-
-    fmt::println(stderr, "lvl {}: '{}' (+ {} tokens)", 0, "", next_tokens.size());
-
-    int num_elems = 0;
-    for (auto [tid, pad] : next_tokens) {
-        auto matches = index(tid);
-        if (matches.size() == 0) {
-            continue;
-        }
-
-        auto token_str = tok.get_tid_to_token().at(tid).substr(pad);
-        int new_state = tok.trie().consume_token(dfa, dfa.start_state, token_str);
-        assert(new_state != dfa_trie::REJECTED);
-
-        if (new_state == dfa_trie::ACCEPTED) {
-            cand_lists.push_back(std::move(matches));
-        } else {
-            visited_states.insert(new_state);
-            auto r = generate_cands(new_state, visited_states, token_str, tok, dfa, index, cache);
-            visited_states.erase(new_state);
-            if (r.cands.has_value()) {
-                cand_lists.push_back(followed_by(matches, r.cands.value()));
-            } else {
-                cand_lists.push_back(matches);
-            }
-            needs_recheck = needs_recheck || r.needs_recheck;
-        }
-
-        num_elems += cand_lists.back().size();
-
-        if (num_elems > CANDS_THRESHOLD) {
-            fmt::println(stderr,
-                         "Warning: more than {} candidate matches generated; aborting..",
-                         CANDS_THRESHOLD);
-            std::fflush(stderr);
-
-            // return everything
-            std::vector<sentid_t> output;
-            sentid_t last_sent_id = -1;
-            for (auto entry : index(tok.BOS_TOKEN_ID)) {
-                if (entry.sent_id != last_sent_id) {
-                    output.push_back(entry.sent_id);
-                }
-                last_sent_id = entry.sent_id;
-            }
-            return {output, true};
-        }
-    }
+    auto result = generate_cands(dfa.start_state,
+                                 token_start::any_byte,
+                                 visited_states,
+                                 "",
+                                 tok,
+                                 dfa,
+                                 index,
+                                 cache,
+                                 0);
 
     std::fflush(stderr);
 
+    if (!result.cands.has_value()) {
+        return {get_all_sent_ids(index), true};
+    }
+
     return {
-        get_sent_ids(merge_sorted_lists(cand_lists)),
-        needs_recheck,
+        get_sent_ids(result.cands.value()),
+        dfa.needs_recheck || result.needs_recheck,
     };
 }
 
