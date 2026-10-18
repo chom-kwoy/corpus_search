@@ -199,6 +199,7 @@ auto generate_cands(int state,
 
 auto search(tokenizer const &tok,
             std::function<index_accessor> const &index,
+            std::function<filter_accessor> const &filter,
             std::string const &regex) -> search_result
 {
     fmt::println(stderr, "Regex = {}", regex);

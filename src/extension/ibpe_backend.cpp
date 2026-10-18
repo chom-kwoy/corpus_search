@@ -140,7 +140,10 @@ auto corpus_search::backend::search_corpus(tokenizer tok,
             return {};
         };
 
-        auto result = corpus_search::search(*tok_ptr, cb, std::string(search_term));
+        auto result = corpus_search::search(*tok_ptr,
+                                            cb,
+                                            nullptr, // TODO: implement this
+                                            std::string(search_term));
 
         auto sentid_vector = new std::vector<sentid_t>(std::move(result.candidates));
         return {

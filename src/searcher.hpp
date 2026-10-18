@@ -1,6 +1,7 @@
 #ifndef SEARCHER_HPP
 #define SEARCHER_HPP
 
+#include "residue_filter.hpp"
 #include "sizes.h"
 #include "tokenizer.hpp"
 
@@ -29,6 +30,7 @@ struct token_match
 };
 
 using index_accessor = auto(int token) -> std::vector<token_match>;
+using filter_accessor = auto(int token) -> default_residue_filter;
 
 struct search_result
 {
@@ -38,6 +40,7 @@ struct search_result
 
 auto search(tokenizer const &tok,
             std::function<index_accessor> const &index,
+            std::function<filter_accessor> const &filter,
             std::string const &regex) -> search_result;
 
 } // namespace corpus_search

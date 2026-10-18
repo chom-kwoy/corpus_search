@@ -9,20 +9,22 @@
 
 #include "searcher.hpp"
 
-static auto measure_time(std::string search_term) -> std::vector<sentid_t>
+static FILE* output_file = nullptr;
+
+static auto run_match_test(std::string search_term, int expected) -> std::vector<sentid_t>
 {
     using namespace std::chrono;
     auto start_time = high_resolution_clock::now();
 
-    auto index_accessor = [](int token) {
-        std::vector<corpus_search::token_match> result{};
+    auto index_accessor = [](int token) -> std::vector<corpus_search::token_match> {
+        auto result = std::vector<corpus_search::token_match>{};
         auto& index = get_index().get_index();
         if (index.count(token) == 0) {
             return result;
         }
-        auto const& vec = index.at(token);
-        result.reserve(vec.entries.size());
-        for (auto const& entry : vec.entries) {
+        auto const& hit = index.at(token);
+        result.reserve(hit.entries.size());
+        for (auto const& entry : hit.entries) {
             result.push_back({
                 entry.sent_id,
                 entry.pos,
@@ -33,7 +35,16 @@ static auto measure_time(std::string search_term) -> std::vector<sentid_t>
         }
         return result;
     };
-    auto result = search(get_tok(), index_accessor, search_term);
+
+    auto filter_accessor = [](int token) -> corpus_search::default_residue_filter {
+        auto& index = get_index().get_index();
+        if (index.count(token) == 0) {
+            return {};
+        }
+        return index.at(token).filter;
+    };
+
+    auto result = search(get_tok(), index_accessor, filter_accessor, search_term);
 
     auto end_time = high_resolution_clock::now();
 
@@ -51,18 +62,22 @@ static auto measure_time(std::string search_term) -> std::vector<sentid_t>
         fmt::println(stderr, "Needs recheck = {}", result.needs_recheck);
     }
 
-    auto elapsed = end_time - start_time;
-    fmt::println("Search for '{}': Took {}.", search_term, duration_cast<duration<float>>(elapsed));
+    auto elapsed_sec = duration_cast<duration<float, std::ratio<1, 1000>>>(end_time - start_time);
+    fmt::println("Search for '{}': Took {}.", search_term, elapsed_sec);
     std::fflush(stdout);
 
-    auto test_info = ::testing::UnitTest::GetInstance()->current_test_info();
-    if (test_info != nullptr && std::getenv("IBPE_TEST_WRITE_SEARCH_RESULTS")) {
-        // write retrieved ids into a file
-        auto file = fmt::output_file(fmt::format("test_search_{}.txt", test_info->name()));
+    EXPECT_EQ(result.candidates.size(), expected);
+    bool passed = result.candidates.size() == expected;
 
-        for (auto id : result.candidates) {
-            file.print("{}\n", id);
-        }
+    auto test_info = ::testing::UnitTest::GetInstance()->current_test_info();
+    if (test_info != nullptr && output_file) {
+        // write results to output file
+        fmt::println(output_file,
+                     "{}\tpass={}\telapsed={}\t{}",
+                     test_info->test_case_name(),
+                     passed,
+                     elapsed_sec,
+                     search_term);
     }
 
     return result.candidates;
@@ -72,84 +87,92 @@ class Searcher : public ::testing::Test
 {
 protected:
     // Called once before the first test in this test suite
-    static void SetUpTestSuite() { get_tok(), get_index(); }
+    static void SetUpTestSuite()
+    {
+        get_tok(), get_index();
+
+        const auto outfile = std::getenv("IBPE_TEST_WRITE_SEARCH_RESULTS");
+        if (outfile) {
+            output_file = std::fopen(fmt::format("test_search_{}.txt", outfile).c_str(), "w");
+        }
+    }
 
     // Called once after the last test in this test suite
-    static void TearDownTestSuite() {}
+    static void TearDownTestSuite() { std::fclose(output_file); }
 };
 
 TEST_F(Searcher, SearchStringSimple1)
 {
-    EXPECT_EQ(measure_time("ho").size(), 811034);
+    run_match_test("ho", 811034);
 }
 TEST_F(Searcher, SearchStringSimple2)
 {
-    EXPECT_EQ(measure_time("o").size(), 1286676);
+    run_match_test("o", 1286676);
 }
 TEST_F(Searcher, SearchStringSimple3)
 {
-    EXPECT_EQ(measure_time("z").size(), 20'621);
+    run_match_test("z", 20621);
 }
 TEST_F(Searcher, SearchStringSimple4)
 {
-    EXPECT_EQ(measure_time("TT").size(), 0);
+    run_match_test("TT", 0);
 }
 
 TEST_F(Searcher, SearchStringHard1)
 {
-    EXPECT_EQ(measure_time("si\\.ta\\.so\\.ngi\\.ta").size(), 14);
+    run_match_test("si\\.ta\\.so\\.ngi\\.ta", 14);
 }
 TEST_F(Searcher, SearchStringHard2)
 {
-    EXPECT_EQ(measure_time("ho\\.ni").size(), 94299);
-    EXPECT_EQ(measure_time("ngi\\.ta").size(), 2'472);
-    EXPECT_EQ(measure_time("ka\\.nan\\.ho").size(), 719);
-    EXPECT_EQ(measure_time("o\\.non").size(), 74946);
-    EXPECT_EQ(measure_time("國家").size(), 296);
-    EXPECT_EQ(measure_time("家non").size(), 59);
+    run_match_test("ho\\.ni", 94299);
+    run_match_test("ngi\\.ta", 2472);
+    run_match_test("ka\\.nan\\.ho", 719);
+    run_match_test("o\\.non", 74946);
+    run_match_test("國家", 296);
+    run_match_test("家non", 59);
 }
 
 TEST_F(Searcher, SearchRegexEasy1)
 {
-    EXPECT_EQ(measure_time("cho\\.c[ou]\\.ni").size(), 168);
+    run_match_test("cho\\.c[ou]\\.ni", 168);
 }
 TEST_F(Searcher, SearchRegexEasy2)
 {
-    EXPECT_EQ(measure_time("cho\\.cw?[ou]\\.n").size(), 231);
+    run_match_test("cho\\.cw?[ou]\\.n", 231);
 }
 TEST_F(Searcher, SearchRegexEasy3)
 {
-    EXPECT_EQ(measure_time("w[ou]\\.toy").size(), 44781);
+    run_match_test("w[ou]\\.toy", 44781);
 }
 
 TEST_F(Searcher, SearchRegexHard1)
 {
-    EXPECT_EQ(measure_time("(k[aeiou]\\.){3}k").size(), 0);
+    run_match_test("(k[aeiou]\\.){3}k", 0);
 }
 TEST_F(Searcher, SearchRegexHard2)
 {
-    EXPECT_EQ(measure_time(HANJA_RE "`i").size(), 61'261);
+    run_match_test(HANJA_RE "`i", 61261);
 }
 TEST_F(Searcher, SearchRegexHard3)
 {
-    EXPECT_EQ(measure_time("pskuy....").size(), 1763);
+    run_match_test("pskuy....", 1763);
 }
 TEST_F(Searcher, SearchRegexHard4)
 {
-    EXPECT_EQ(measure_time("[a-zA-Z. ]{4}pskuy").size(), 771);
+    run_match_test("[a-zA-Z. ]{4}pskuy", 771);
 }
 
 TEST_F(Searcher, SearchRegexUnicode)
 {
-    EXPECT_EQ(measure_time("\\p{Script=Han}`i").size(), 61263);
+    run_match_test("\\p{Script=Han}`i", 61263);
 }
 
 TEST_F(Searcher, SearchRegexInfinite)
 {
-    EXPECT_EQ(measure_time(".*abc").size(), 0);
+    run_match_test(".*abc", 0);
 }
 
 TEST_F(Searcher, SearchRegexMatchAll)
 {
-    EXPECT_EQ(measure_time(".*").size(), 1733874);
+    run_match_test(".*", 1733874);
 }
