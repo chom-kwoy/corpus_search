@@ -1,5 +1,6 @@
 #include "residue_filter.hpp"
 
+#include <fmt/core.h>
 #include <gtest/gtest.h>
 
 #include <algorithm>
@@ -362,6 +363,18 @@ TEST(ResidueFilter, SaturationDoesNotRestoreSelectivity)
         EXPECT_TRUE(result.contains(value));
     }
     expect_sound(result, {});
+}
+
+TEST(ResidueFilter, CustomTest1)
+{
+    using filter_type = corpus_search::default_residue_filter;
+
+    auto const filter1 = filter_type::encode(std::vector<int>{{0, 200, 300, 400}});
+    auto const filter2 = filter_type::encode(std::vector<int>{{0, 200, 300, 401}});
+
+    auto result = filter1.shift(1) & filter2;
+
+    EXPECT_GE(result.cardinality_upper_bound(), 1);
 }
 
 } // namespace

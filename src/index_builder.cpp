@@ -137,7 +137,13 @@ void index_builder::finalize_index()
 {
     std::size_t count = 0;
     for (auto &&[tok_id, set] : result) {
+        // Sort the entries in increasing order
         std::sort(set.entries.begin(), set.entries.end());
+
+        // Construct the residue filter
+        set.filter = default_residue_filter::encode(
+            std::views::transform(set.entries, [](const auto &x) { return x.hash(); }));
+
         count += set.entries.size();
     }
     fmt::println("Avg {} items per token ID.", static_cast<double>(count) / result.size());

@@ -127,13 +127,18 @@ struct token_and_offset
     int offset;
 };
 
+// TODO: for debugging
+std::chrono::duration<float> union_time;
+
 auto generate_cands(int state,
+                    std::optional<default_residue_filter> prev_filt,
                     token_start start,
                     std::set<int> &visited_states,
                     std::string const &prev_prefix, // for debugging only
                     tokenizer const &tok,
                     regex::sm::graph const &dfa,
                     std::function<index_accessor> const &index,
+                    std::function<filter_accessor> const &filter,
                     std::unordered_map<int, cand_result> &cache,
                     int level = 1) -> cand_result
 {
@@ -172,14 +177,21 @@ auto generate_cands(int state,
         auto token_str = tok.get_tid_to_token().at(token).substr(offset);
         auto cur_prefix = prev_prefix + token_str;
 
-        auto matches = index(token);
-        if (matches.size() == 0) {
+        auto matches_filt = filter(token);
+        if (matches_filt.definitely_empty()) {
+            continue;
+        }
+
+        auto new_filt = prev_filt.has_value() ? prev_filt.value().shift(1) & matches_filt
+                                              : matches_filt;
+        if (new_filt.definitely_empty()) {
             continue;
         }
 
         int new_state = tok.trie().consume_token(dfa, state, token_str);
         assert(new_state != dfa_trie::REJECTED);
         if (new_state == dfa_trie::ACCEPTED) {
+            auto matches = index(token);
             full_cands.push_back(std::move(matches));
         } else if (start == token_start::boundary && visited_states.contains(new_state)) {
             // infinite recursion detected
@@ -190,20 +202,25 @@ auto generate_cands(int state,
         } else {
             visited_states.insert(new_state);
             auto r = generate_cands(new_state,
+                                    new_filt,
                                     token_start::boundary,
                                     visited_states,
                                     cur_prefix,
                                     tok,
                                     dfa,
                                     index,
+                                    filter,
                                     cache,
                                     level + 1);
             visited_states.erase(new_state);
+
+            auto matches = index(token);
             if (r.cands.has_value()) {
                 full_cands.push_back(followed_by(matches, r.cands.value()));
             } else {
                 full_cands.push_back(matches);
             }
+
             needs_recheck = needs_recheck || r.needs_recheck;
         }
 
@@ -222,8 +239,12 @@ auto generate_cands(int state,
         }
     }
 
+    auto start_time = std::chrono::system_clock::now();
+
     // union the sorted sequences in vec_result
     auto full_result = merge_sorted_lists(full_cands);
+
+    union_time += std::chrono::duration<float>(std::chrono::system_clock::now() - start_time);
 
     if (start == token_start::boundary) {
         return cache[state] = {full_result, needs_recheck};
@@ -258,15 +279,21 @@ auto search(tokenizer const &tok,
     std::unordered_map<int, cand_result> cache;
     std::set<int> visited_states = {dfa.start_state};
 
+    union_time = {};
+
     auto result = generate_cands(dfa.start_state,
+                                 {},
                                  token_start::any_byte,
                                  visited_states,
                                  "",
                                  tok,
                                  dfa,
                                  index,
+                                 filter,
                                  cache,
                                  0);
+
+    fmt::println("Union time = {}", std::chrono::duration<float, std::ratio<1, 1000>>(union_time));
 
     std::fflush(stderr);
 
