@@ -50,7 +50,7 @@ target_include_directories(lib_corpus_search INTERFACE "${CMAKE_CURRENT_SOURCE_D
 target_compile_definitions(lib_corpus_search PUBLIC
     CORPUS_SEARCH_INDEX_ENTRY_BITS=64
     CORPUS_SEARCH_POSITION_BITS=12
-    CORPUS_SEARCH_NEXT_TOKEN_BITS=12
+    CORPUS_SEARCH_NEXT_TOKEN_BITS=0
 )
 
 
@@ -135,6 +135,25 @@ CPMAddPackage(
   EXCLUDE_FROM_ALL ON
 )
 target_link_libraries(lib_corpus_search PUBLIC roaring::roaring)
+
+## ips4o - for fast sorting ##
+FetchContent_Declare(
+    ips4o
+    GIT_REPOSITORY https://github.com/ips4o/ips4o.git
+    GIT_TAG master
+    EXCLUDE_FROM_ALL
+)
+FetchContent_MakeAvailable(ips4o)
+set_property(TARGET ips4o PROPERTY POSITION_INDEPENDENT_CODE ON)
+target_link_libraries(lib_corpus_search PRIVATE ips4o)
+
+## OpenMP ##
+find_package(OpenMP REQUIRED)
+target_link_libraries(lib_corpus_search PRIVATE OpenMP::OpenMP_CXX)
+
+## Threads ##
+find_package(Threads REQUIRED)
+target_link_libraries(lib_corpus_search PRIVATE Threads::Threads)
 ##################################################
 ##################################################
 

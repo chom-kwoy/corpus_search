@@ -13,15 +13,19 @@ namespace corpus_search {
 
 struct token_match
 {
-    sentid_t sent_id;
-    tokpos_t pos;
+    sentid_t sent_id : CORPUS_SEARCH_SENTID_BITS;
+    tokpos_t pos : CORPUS_SEARCH_POSITION_BITS;
 #if CORPUS_SEARCH_NEXT_TOKEN_BITS > 0
-    int next_tok_hash;
+    int next_tok_hash : CORPUS_SEARCH_NEXT_TOKEN_BITS;
 #endif
 
     bool operator<(token_match const &other) const
     {
         return std::tie(sent_id, pos) < std::tie(other.sent_id, other.pos);
+    }
+    bool operator==(token_match const &other) const
+    {
+        return std::tie(sent_id, pos) == std::tie(other.sent_id, other.pos);
     }
     bool operator!=(token_match const &other) const
     {
